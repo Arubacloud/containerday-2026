@@ -1,0 +1,131 @@
+---
+apiVersion: arubacloud.crossplane.io/v1alpha1
+kind: Securityrule
+metadata:
+  name: allow-ssh
+  namespace: default
+spec:
+  forProvider:
+    name: allow-ssh
+    location: ITBG-Bergamo
+    projectIdRef:
+      name: my-project
+    vpcIdRef:
+      name: main-vpc
+    securityGroupIdRef:
+      name: web-sg
+    properties:
+      direction: Ingress
+      protocol: TCP
+      port: "22"
+      target:
+        kind: Ip
+        value: "0.0.0.0/0"
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: arubacloud.crossplane.io/v1alpha1
+kind: Securityrule
+metadata:
+  name: allow-http
+  namespace: default
+spec:
+  forProvider:
+    name: allow-http
+    location: ITBG-Bergamo
+    projectIdRef:
+      name: my-project
+    vpcIdRef:
+      name: main-vpc
+    securityGroupIdRef:
+      name: web-sg
+    properties:
+      direction: Ingress
+      protocol: TCP
+      port: "80"
+      target:
+        kind: Ip
+        value: "0.0.0.0/0"
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: arubacloud.crossplane.io/v1alpha1
+kind: Securityrule
+metadata:
+  name: allow-https
+  namespace: default
+spec:
+  forProvider:
+    name: allow-https
+    location: ITBG-Bergamo
+    projectIdRef:
+      name: my-project
+    vpcIdRef:
+      name: main-vpc
+    securityGroupIdRef:
+      name: web-sg
+    properties:
+      direction: Ingress
+      protocol: TCP
+      port: "443"
+      target:
+        kind: Ip
+        value: "0.0.0.0/0"
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: arubacloud.crossplane.io/v1alpha1
+kind: Securityrule
+metadata:
+  name: allow-egress
+  namespace: default
+spec:
+  forProvider:
+    name: allow-egress
+    location: ITBG-Bergamo
+    projectIdRef:
+      name: my-project
+    vpcIdRef:
+      name: main-vpc
+    securityGroupIdRef:
+      name: web-sg
+    properties:
+      direction: Egress
+      protocol: ANY
+      port: "*"
+      target:
+        kind: Ip
+        value: "0.0.0.0/0"
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
+---
+apiVersion: arubacloud.crossplane.io/v1alpha1
+kind: Securityrule
+metadata:
+  name: allow-icmp
+  namespace: default
+spec:
+  forProvider:
+    name: allow-icmp
+    location: ITBG-Bergamo
+    projectIdRef:
+      name: my-project
+    vpcIdRef:
+      name: main-vpc
+    securityGroupIdRef:
+      name: web-sg
+    properties:
+      direction: Ingress
+      protocol: ICMP
+      # port defaults to "*" for ICMP and ANY protocols (since v1.1.0); explicit here for clarity.
+      port: "*"
+      target:
+        kind: Ip
+        value: "0.0.0.0/0"
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

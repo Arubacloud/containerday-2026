@@ -1,0 +1,7 @@
+apiVersion: platform.example.com/v1alpha1
+kind: ApplicationEnvironment
+metadata:
+  name: test
+  namespace: default
+spec:
+  image: docker.io/stefanprodan/podinfo:6.11.0

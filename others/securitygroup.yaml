@@ -1,0 +1,18 @@
+apiVersion: arubacloud.crossplane.io/v1alpha1
+kind: Securitygroup
+metadata:
+  name: web-sg
+  namespace: default
+spec:
+  forProvider:
+    name: web-sg
+    location: ITBG-Bergamo
+    tags:
+      - crossplane
+    projectIdRef:
+      name: my-project
+    vpcIdRef:
+      name: main-vpc
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

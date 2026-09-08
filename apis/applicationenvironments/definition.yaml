@@ -1,0 +1,58 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: applicationenvironments.platform.example.com
+spec:
+  group: platform.example.com
+  names:
+    categories:
+    - crossplane
+    kind: ApplicationEnvironment
+    plural: applicationenvironments
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        description: ApplicationEnvironment provisions a VM and deploys a Docker image onto it.
+        properties:
+          spec:
+            description: ApplicationEnvironmentSpec defines the desired state of ApplicationEnvironment.
+            properties:
+              image:
+                description: Docker image to deploy on the provisioned VM (e.g. nginx:latest).
+                type: string
+            required:
+            - image
+            type: object
+          status:
+            description: ApplicationEnvironmentStatus defines the observed state of ApplicationEnvironment.
+            properties:
+              conditions:
+                description: Crossplane conditions for this resource.
+                items:
+                  properties:
+                    lastTransitionTime:
+                      format: date-time
+                      type: string
+                    message:
+                      type: string
+                    reason:
+                      type: string
+                    status:
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+            type: object
+        required:
+        - spec
+        type: object
+    served: true

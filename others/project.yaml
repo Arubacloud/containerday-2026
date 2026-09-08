@@ -1,0 +1,15 @@
+apiVersion: arubacloud.crossplane.io/v1alpha1
+kind: Project
+metadata:
+  name: my-project
+  namespace: default
+spec:
+  forProvider:
+    name: my-project
+    description: "Example ArubaCloud project managed by Crossplane"
+    tags:
+      - crossplane
+      - example
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

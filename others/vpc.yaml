@@ -1,0 +1,17 @@
+apiVersion: arubacloud.crossplane.io/v1alpha1
+kind: VPC
+metadata:
+  name: main-vpc
+  namespace: default
+spec:
+  forProvider:
+    name: main-vpc
+    location: ITBG-Bergamo
+    tags:
+      - crossplane
+    # Reference the Project by name - Crossplane resolves it to project_id.
+    projectIdRef:
+      name: my-project
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

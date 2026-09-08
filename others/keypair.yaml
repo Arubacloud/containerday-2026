@@ -1,0 +1,23 @@
+apiVersion: arubacloud.crossplane.io/v1alpha1
+kind: Keypair
+metadata:
+  name: my-keypair
+  namespace: default
+spec:
+  forProvider:
+    name: my-keypair
+    location: ITBG-Bergamo
+    tags:
+      - crossplane
+    projectIdRef:
+      name: my-project
+    # valueSecretRef points to a Kubernetes Secret containing the OpenSSH public key.
+    # Create it with:
+    #   kubectl create secret generic my-keypair-pub \
+    #     --from-literal=value="ssh-ed25519 AAAA... user@host"
+    valueSecretRef:
+      name: my-keypair-pub
+      key: value
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

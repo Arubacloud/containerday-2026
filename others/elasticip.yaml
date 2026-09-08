@@ -1,0 +1,20 @@
+apiVersion: arubacloud.crossplane.io/v1alpha1
+kind: Elasticip
+metadata:
+  name: web-eip
+  namespace: default
+spec:
+  forProvider:
+    name: web-eip
+    location: ITBG-Bergamo
+    billingPeriod: Hour
+    tags:
+      - crossplane
+    projectIdRef:
+      name: my-project
+  # The assigned public IP address is exposed in the connection secret.
+  writeConnectionSecretToRef:
+    name: web-eip-address
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

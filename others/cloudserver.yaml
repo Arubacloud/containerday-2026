@@ -1,0 +1,46 @@
+apiVersion: arubacloud.crossplane.io/v1alpha1
+kind: Cloudserver
+metadata:
+  name: web-01
+  namespace: default
+spec:
+  forProvider:
+    name: web-01
+    location: ITBG-Bergamo
+    zone: ITBG-1
+    tags:
+      - crossplane
+      - webserver
+
+    projectIdRef:
+      name: my-project
+
+    network:
+      vpcUriRefRef:
+        name: main-vpc
+      subnetUriRefsRefs:
+        - name: private-subnet
+      securitygroupUriRefsRefs:
+        - name: web-sg
+      elasticIpUriRefRef:
+        name: web-eip
+
+    settings:
+      flavorName: CSO4A8
+      keyPairUriRefRef:
+        name: my-keypair
+      # userDataSecretRef:
+      #   name: cloud-init-config
+      #   key: userdata
+
+    storage:
+      bootVolumeUriRefRef:
+        name: boot-vol
+
+  # private_ip is written to the connection secret once the server is provisioned.
+  # Read it with: kubectl get secret web-01-connection -o jsonpath='{.data.private_ip}' | base64 -d
+  writeConnectionSecretToRef:
+    name: web-01-connection
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

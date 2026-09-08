@@ -1,0 +1,1 @@
+{"properties":{"resourceVersion":{"type":"string","description":"Specifies the target ResourceVersion"},"uid":{"type":"string","description":"Specifies the target UID."}},"additionalProperties":false,"type":"object","description":"Preconditions must be fulfilled before an operation (update, delete, etc.) is carried out."}

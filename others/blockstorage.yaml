@@ -1,0 +1,23 @@
+apiVersion: arubacloud.crossplane.io/v1alpha1
+kind: Blockstorage
+metadata:
+  name: boot-vol
+  namespace: default
+spec:
+  forProvider:
+    name: boot-vol
+    location: ITBG-Bergamo
+    # Increasing sizeGb is supported in-place. Decreasing it forces replacement (since v1.1.0).
+    sizeGb: 100
+    billingPeriod: Hour
+    zone: ITBG-1
+    type: Performance
+    bootable: true
+    image: LU22-001
+    tags:
+      - crossplane
+    projectIdRef:
+      name: my-project
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default

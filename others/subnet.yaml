@@ -1,0 +1,31 @@
+apiVersion: arubacloud.crossplane.io/v1alpha1
+kind: Subnet
+metadata:
+  name: private-subnet
+  namespace: default
+spec:
+  forProvider:
+    name: private-subnet
+    location: ITBG-Bergamo
+    # type Basic requires no network block.
+    # For Advanced subnets use type: Advanced with a network block:
+    #   network:
+    #     address: "10.0.1.0/24"
+    #     dhcp:
+    #       enabled: true
+    #       range:
+    #         start: "10.0.1.10"
+    #         count: 200
+    #       dns:
+    #         - "8.8.8.8"
+    #         - "8.8.4.4"
+    type: Basic
+    tags:
+      - crossplane
+    projectIdRef:
+      name: my-project
+    vpcIdRef:
+      name: main-vpc
+  providerConfigRef:
+    kind: ProviderConfig
+    name: default
