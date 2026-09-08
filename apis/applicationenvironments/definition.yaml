@@ -23,6 +23,12 @@ spec:
               image:
                 description: Docker image to deploy on the provisioned VM (e.g. nginx:latest).
                 type: string
+              port:
+                description: TCP port the container listens on. Used to build the status endpoint and open the security group. Defaults to 9898.
+                type: integer
+                default: 9898
+                minimum: 1
+                maximum: 65535
             required:
             - image
             type: object

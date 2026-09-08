@@ -1,4 +1,4 @@
-apiVersion: apiextensions.crossplane.io/v2
+apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
   name: applicationenvironments.platform.example.com
@@ -29,8 +29,8 @@ spec:
             forProvider:
               description: "ApplicationEnvironment managed project"
               tags:
-                - crossplane
-                - applicationenvironment
+                - xplnln
+                - aenv
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -61,7 +61,7 @@ spec:
             forProvider:
               location: ITBG-Bergamo
               tags:
-                - crossplane
+                - xpln
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -101,7 +101,7 @@ spec:
               location: ITBG-Bergamo
               type: Basic
               tags:
-                - crossplane
+                - xpln
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -148,7 +148,7 @@ spec:
             forProvider:
               location: ITBG-Bergamo
               tags:
-                - crossplane
+                - xpln
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -485,6 +485,65 @@ spec:
               type: Format
               fmt: "%s-sg"
 
+      - name: rule-app
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Securityrule
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              properties:
+                direction: Ingress
+                protocol: TCP
+                port: "9898"
+                target:
+                  kind: Ip
+                  value: "0.0.0.0/0"
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-rule-app"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-rule-app"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.vpcIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.securityGroupIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-sg"
+
       # ── Elastic IP ──────────────────────────────────────────────────────────
       - name: elastic-ip
         base:
@@ -495,9 +554,7 @@ spec:
               location: ITBG-Bergamo
               billingPeriod: Hour
               tags:
-                - crossplane
-            writeConnectionSecretToRef:
-              namespace: crossplane-system
+                - xpln
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -550,7 +607,7 @@ spec:
               bootable: true
               image: LU22-001
               tags:
-                - crossplane
+                - xpln
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -591,10 +648,9 @@ spec:
             forProvider:
               location: ITBG-Bergamo
               tags:
-                - crossplane
+                - xpln
               valueSecretRef:
                 name: app-ssh-pubkey
-                namespace: crossplane-system
                 key: value
             providerConfigRef:
               kind: ProviderConfig
@@ -635,8 +691,8 @@ spec:
               location: ITBG-Bergamo
               zone: ITBG-1
               tags:
-                - crossplane
-                - applicationenvironment
+                - xplnln
+                - aenv
               network:
                 subnetUriRefsRefs:
                   - name: placeholder   # patched below
@@ -645,8 +701,6 @@ spec:
               settings:
                 flavorName: CSO4A8
               storage: {}
-            writeConnectionSecretToRef:
-              namespace: crossplane-system
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -746,9 +800,9 @@ spec:
           into: ssh-secret
           apiVersion: v1
           type: Reference
+          namespace: default
           ref:
             name: app-ssh-privkey
-            namespace: crossplane-system
 
   # Step 3 – Deploy the Docker image onto the provisioned VM via SSH.
   - step: deploy-application
@@ -761,7 +815,7 @@ spec:
         cloudserverResourceName: cloudserver
         sshSecretRef:
           name: app-ssh-privkey
-          namespace: crossplane-system
+          namespace: default
           key: privateKey
         sshUser: ubuntu
         sshPort: 22

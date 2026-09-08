@@ -66,6 +66,11 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 		return rsp, nil
 	}
 
+	appPort, err := xr.Resource.GetInteger("spec.port")
+	if err != nil || appPort == 0 {
+		appPort = 9898
+	}
+
 	// --- Find the Cloudserver in observed composed resources ---
 	observed, err := request.GetObservedComposedResources(req)
 	if err != nil {
@@ -133,7 +138,7 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 	// Write the public IP into the XR status so users can discover the endpoint.
 	dxr, err := request.GetDesiredCompositeResource(req)
 	if err == nil {
-		endpoint := fmt.Sprintf("http://%s", publicIP)
+		endpoint := fmt.Sprintf("http://%s:%d", publicIP, appPort)
 		if setErr := dxr.Resource.SetString("status.endpoint", endpoint); setErr == nil {
 			_ = response.SetDesiredCompositeResource(rsp, dxr)
 		}
