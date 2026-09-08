@@ -1,0 +1,11 @@
+apiVersion: meta.pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-appenv-deployer
+  annotations:
+    meta.crossplane.io/maintainer: ArubaCloud
+    meta.crossplane.io/source: github.com/Arubacloud/containerday-2026
+    meta.crossplane.io/description: Deploys Docker images to ArubaCloud VMs via SSH
+spec:
+  crossplane:
+    version: ">=v2.0.0-0"
