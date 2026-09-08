@@ -2,6 +2,7 @@ package fn
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"testing"
 
@@ -98,24 +99,30 @@ func buildRequest(t *testing.T, xr map[string]interface{}, composed map[string]m
 
 func addSSHSecret(t *testing.T, req *fnv1.RunFunctionRequest, pemKey string) {
 	t.Helper()
+
+	// function-extra-resources stores resources in the pipeline context, not req.ExtraResources.
+	// The secret data value must be base64-encoded (as it is in the Kubernetes API).
+	encoded := base64.StdEncoding.EncodeToString([]byte(pemKey))
 	secret := map[string]interface{}{
 		"apiVersion": "v1",
 		"kind":       "Secret",
 		"metadata": map[string]interface{}{
 			"name":      "app-ssh-privkey",
-			"namespace": "crossplane-system",
+			"namespace": "default",
 		},
 		"data": map[string]interface{}{
-			"privateKey": pemKey,
+			"privateKey": encoded,
 		},
 	}
-	req.ExtraResources = map[string]*fnv1.Resources{
-		"ssh-secret": {
-			Items: []*fnv1.Resource{
-				{Resource: mustStruct(t, secret)},
-			},
-		},
+
+	extraResources := map[string]interface{}{
+		"ssh-secret": []interface{}{secret},
 	}
+
+	ctx := mustStruct(t, map[string]interface{}{
+		"apiextensions.crossplane.io/extra-resources": extraResources,
+	})
+	req.Context = ctx
 }
 
 
@@ -215,28 +222,24 @@ func TestRunFunction_SuccessfulDeployment(t *testing.T) {
 	}
 }
 
-// Test: Missing ssh-secret extra resource
+// Test: Missing ssh-secret in context (first reconcile before function-extra-resources populates it)
 func TestRunFunction_MissingSSHSecret(t *testing.T) {
 	f := NewFunction(logging.NewNopLogger(), &noopDeployer{})
 
 	req := buildRequest(t, defaultXR(), map[string]map[string]interface{}{
 		"cloudserver": readyCloudserver("1.2.3.4"),
 	}, defaultInput())
-	// No ssh-secret extra resource added.
+	// No context set — simulates first reconcile where function-extra-resources hasn't run yet.
 
 	rsp, err := f.RunFunction(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should be fatal — misconfigured platform, not transient.
-	var fatal bool
+	// Should be non-fatal (retryable) — transient condition, not misconfiguration.
 	for _, r := range rsp.Results {
 		if r.Severity == fnv1.Severity_SEVERITY_FATAL {
-			fatal = true
+			t.Errorf("missing SSH secret should produce a retryable (non-fatal) result, got fatal: %s", r.Message)
 		}
-	}
-	if !fatal {
-		t.Error("expected a fatal result when SSH secret is missing")
 	}
 }

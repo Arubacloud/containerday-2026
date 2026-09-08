@@ -3,6 +3,7 @@ package fn
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -21,6 +22,9 @@ import (
 
 // deployTimeout is the overall budget for a single deployment attempt.
 const deployTimeout = 12 * time.Minute
+
+// extraResourcesContextKey is the pipeline context key set by function-extra-resources.
+const extraResourcesContextKey = "apiextensions.crossplane.io/extra-resources"
 
 // Function is the Crossplane Composition Function implementation.
 type Function struct {
@@ -93,10 +97,14 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 
 	log.Info("Cloudserver ready", "publicIp", publicIP)
 
-	// --- Read SSH private key from extra resources ---
-	privateKeyPEM, err := getSSHKey(req, input.Spec.SSHSecretRef)
+	// --- Read SSH private key from the pipeline context populated by function-extra-resources ---
+	// function-extra-resources stores fetched resources in the pipeline context (not req.ExtraResources).
+	// On the first reconcile it exits early before populating the context, so we treat a missing
+	// secret as a transient/retryable condition rather than a fatal misconfiguration.
+	privateKeyPEM, err := getSSHKeyFromContext(req, input.Spec.SSHSecretRef)
 	if err != nil {
-		response.Fatal(rsp, errors.Wrap(err, "cannot read SSH secret"))
+		log.Info("SSH secret not yet available in pipeline context, will retry", "error", err)
+		response.Normalf(rsp, "Waiting for SSH secret: %s", sanitizeError(err))
 		return rsp, nil
 	}
 
@@ -197,44 +205,76 @@ func isCloudserverReady(obj map[string]interface{}) bool {
 	return false
 }
 
-// getSSHKey retrieves the private key bytes from an extra resource named "ssh-secret".
-func getSSHKey(req *fnv1.RunFunctionRequest, ref v1alpha1.SSHSecretRef) ([]byte, error) {
-	extras, err := request.GetExtraResources(req)
-	if err != nil {
-		return nil, fmt.Errorf("get extra resources: %w", err)
+// getSSHKeyFromContext reads the SSH private key from the pipeline context populated by
+// function-extra-resources. The context key is "apiextensions.crossplane.io/extra-resources"
+// and the structure is map[into][]unstructured.Unstructured serialised as JSON.
+//
+// Kubernetes Secret data values are base64-encoded strings in the API response, so we
+// decode them before returning.
+func getSSHKeyFromContext(req *fnv1.RunFunctionRequest, ref v1alpha1.SSHSecretRef) ([]byte, error) {
+	ctx := req.GetContext()
+	if ctx == nil {
+		return nil, fmt.Errorf("pipeline context is empty; waiting for function-extra-resources to populate it")
 	}
 
-	items, ok := extras["ssh-secret"]
-	if !ok || len(items) == 0 {
-		return nil, fmt.Errorf("extra resource 'ssh-secret' not found; ensure the Composition requests it via an EnvironmentConfig or ExtraResources pipeline step")
+	ctxFields := ctx.GetFields()
+	extraVal, ok := ctxFields[extraResourcesContextKey]
+	if !ok {
+		return nil, fmt.Errorf("extra resources not yet in pipeline context")
 	}
 
-	secretObj := items[0].Resource.Object
+	extraStruct := extraVal.GetStructValue()
+	if extraStruct == nil {
+		return nil, fmt.Errorf("extra resources context value is not a struct")
+	}
+
+	secretListVal, ok := extraStruct.GetFields()["ssh-secret"]
+	if !ok {
+		return nil, fmt.Errorf("'ssh-secret' key not found in extra resources context")
+	}
+
+	secretList := secretListVal.GetListValue()
+	if secretList == nil || len(secretList.GetValues()) == 0 {
+		return nil, fmt.Errorf("ssh-secret list is empty in extra resources context")
+	}
+
+	secretStruct := secretList.GetValues()[0].GetStructValue()
+	if secretStruct == nil {
+		return nil, fmt.Errorf("ssh-secret first item is not a struct")
+	}
+
+	dataVal, ok := secretStruct.GetFields()["data"]
+	if !ok {
+		return nil, fmt.Errorf("ssh secret has no data field")
+	}
+
+	dataStruct := dataVal.GetStructValue()
+	if dataStruct == nil {
+		return nil, fmt.Errorf("ssh secret data is not a struct")
+	}
 
 	key := ref.Key
 	if key == "" {
 		key = "privateKey"
 	}
 
-	data, ok := secretObj["data"].(map[string]interface{})
+	keyVal, ok := dataStruct.GetFields()[key]
 	if !ok {
-		return nil, fmt.Errorf("ssh secret has no data field")
+		return nil, fmt.Errorf("key %q not found in SSH secret", key)
 	}
 
-	val, ok := data[key]
-	if !ok {
-		return nil, fmt.Errorf("key %q not found in SSH secret %s/%s", key, ref.Namespace, ref.Name)
+	// Kubernetes Secret data is base64-encoded in the API response.
+	encoded := keyVal.GetStringValue()
+	if encoded == "" {
+		return nil, fmt.Errorf("SSH private key value is empty")
 	}
 
-	// Secret data is base64-encoded by Kubernetes; unstructured decode gives []byte already decoded.
-	switch v := val.(type) {
-	case string:
-		return []byte(v), nil
-	case []byte:
-		return v, nil
-	default:
-		return nil, fmt.Errorf("unexpected type for secret key %q: %T", key, val)
+	pem, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("base64-decode SSH private key: %w", err)
 	}
+
+	return pem, nil
 }
 
 // sanitizeError strips any path/credential noise from an error message.
