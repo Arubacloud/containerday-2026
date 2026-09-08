@@ -29,6 +29,9 @@ spec:
           status:
             description: ApplicationEnvironmentStatus defines the observed state of ApplicationEnvironment.
             properties:
+              endpoint:
+                description: HTTP endpoint to reach the deployed application.
+                type: string
               conditions:
                 description: Crossplane conditions for this resource.
                 items:

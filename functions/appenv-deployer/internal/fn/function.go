@@ -130,6 +130,15 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 	log.Info("Application deployed successfully", "image", image, "container", input.Spec.ContainerName)
 	response.Normalf(rsp, "Application %q deployed successfully as container %q", image, input.Spec.ContainerName)
 
+	// Write the public IP into the XR status so users can discover the endpoint.
+	dxr, err := request.GetDesiredCompositeResource(req)
+	if err == nil {
+		endpoint := fmt.Sprintf("http://%s", publicIP)
+		if setErr := dxr.Resource.SetString("status.endpoint", endpoint); setErr == nil {
+			_ = response.SetDesiredCompositeResource(rsp, dxr)
+		}
+	}
+
 	return rsp, nil
 }
 

@@ -142,7 +142,9 @@ func reconcileContainer(ctx context.Context, c internalssh.Client, image, contai
 	runCtx, cancel4 := context.WithTimeout(ctx, timeout)
 	defer cancel4()
 
-	runCmd := fmt.Sprintf("sudo docker run -d --name %s --restart unless-stopped %s", containerName, image)
+	// --network host exposes all container ports directly on the VM's public IP,
+	// making the application reachable without explicit port mapping.
+	runCmd := fmt.Sprintf("sudo docker run -d --name %s --restart unless-stopped --network host %s", containerName, image)
 	if _, err := c.Run(runCtx, runCmd); err != nil {
 		return fmt.Errorf("docker run %s: %w", image, err)
 	}
