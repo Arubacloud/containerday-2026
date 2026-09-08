@@ -102,8 +102,11 @@ jobs:
 
       # Push the xpkg with every tag produced by the metadata step.
       - name: Push xpkg
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          for TAG in ${{ steps.meta.outputs.tags }}; do
+          echo "$TAGS" | while IFS= read -r TAG; do
+            [ -z "$TAG" ] && continue
             echo "Pushing $TAG"
             crossplane xpkg push \
               --package-files /tmp/function-appenv-deployer.xpkg \
