@@ -81,7 +81,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # Cache layers between runs using the registry itself.
-          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache
+          cache-from: type=registry,ref=${{ env.IMAGE }}:buildcache,ignore-error=true
           cache-to: type=registry,ref=${{ env.IMAGE }}:buildcache,mode=max
           provenance: false
 
