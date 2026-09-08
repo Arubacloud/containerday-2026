@@ -108,18 +108,18 @@ func reconcileContainer(ctx context.Context, c internalssh.Client, image, contai
 	inspectCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	currentImage, running, exists, err := inspectContainer(inspectCtx, c, containerName)
+	currentImage, running, hostNetwork, exists, err := inspectContainer(inspectCtx, c, containerName)
 	if err != nil {
 		return fmt.Errorf("inspect container: %w", err)
 	}
 
-	if exists && currentImage == image && running {
+	if exists && currentImage == image && running && hostNetwork {
 		// Already in desired state.
 		return nil
 	}
 
-	if exists && currentImage != image {
-		// Image has changed — remove and recreate.
+	if exists && (currentImage != image || !hostNetwork) {
+		// Image changed or network mode changed — remove and recreate.
 		rmCtx, cancel2 := context.WithTimeout(ctx, timeout)
 		defer cancel2()
 		if _, err := c.Run(rmCtx, fmt.Sprintf("sudo docker rm -f %s", containerName)); err != nil {
@@ -152,29 +152,29 @@ func reconcileContainer(ctx context.Context, c internalssh.Client, image, contai
 	return nil
 }
 
-// inspectContainer returns currentImage, running, exists for a named container.
-func inspectContainer(ctx context.Context, c internalssh.Client, containerName string) (currentImage string, running bool, exists bool, err error) {
-	// docker inspect outputs "<image>\n<status>" for the named container.
+// inspectContainer returns currentImage, running, hostNetwork, exists for a named container.
+func inspectContainer(ctx context.Context, c internalssh.Client, containerName string) (currentImage string, running bool, hostNetwork bool, exists bool, err error) {
 	cmd := fmt.Sprintf(
-		`sudo docker inspect --format '{{.Config.Image}}|{{.State.Running}}' %s 2>/dev/null || echo '__not_found__'`,
+		`sudo docker inspect --format '{{.Config.Image}}|{{.State.Running}}|{{.HostConfig.NetworkMode}}' %s 2>/dev/null || echo '__not_found__'`,
 		containerName,
 	)
 	out, err := c.Run(ctx, cmd)
 	if err != nil {
-		return "", false, false, err
+		return "", false, false, false, err
 	}
 
 	out = strings.TrimSpace(out)
 	if out == "__not_found__" || out == "" {
-		return "", false, false, nil
+		return "", false, false, false, nil
 	}
 
-	parts := strings.SplitN(out, "|", 2)
-	if len(parts) != 2 {
-		return "", false, false, fmt.Errorf("unexpected inspect output: %q", out)
+	parts := strings.SplitN(out, "|", 3)
+	if len(parts) != 3 {
+		return "", false, false, false, fmt.Errorf("unexpected inspect output: %q", out)
 	}
 
 	currentImage = strings.TrimSpace(parts[0])
 	running = strings.TrimSpace(parts[1]) == "true"
-	return currentImage, running, true, nil
+	hostNetwork = strings.TrimSpace(parts[2]) == "host"
+	return currentImage, running, hostNetwork, true, nil
 }

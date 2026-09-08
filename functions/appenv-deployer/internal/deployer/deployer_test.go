@@ -165,7 +165,7 @@ func TestReconcileContainer_Create(t *testing.T) {
 func TestReconcileContainer_AlreadyRunning(t *testing.T) {
 	client := &mockClient{
 		responses: map[string]cmdResult{
-			"docker inspect": {out: "nginx:latest|true"},
+			"docker inspect": {out: "nginx:latest|true|host"},
 		},
 	}
 
@@ -185,7 +185,7 @@ func TestReconcileContainer_AlreadyRunning(t *testing.T) {
 func TestReconcileContainer_WrongImage(t *testing.T) {
 	client := &mockClient{
 		responses: map[string]cmdResult{
-			"docker inspect": {out: "oldimage:v1|true"},
+			"docker inspect": {out: "oldimage:v1|true|host"},
 			"docker rm":      {out: ""},
 			"docker run":     {out: "newid"},
 		},
@@ -217,7 +217,7 @@ func TestReconcileContainer_WrongImage(t *testing.T) {
 func TestReconcileContainer_StoppedCorrectImage(t *testing.T) {
 	client := &mockClient{
 		responses: map[string]cmdResult{
-			"docker inspect": {out: "nginx:latest|false"},
+			"docker inspect": {out: "nginx:latest|false|host"},
 			"docker start":   {out: "application"},
 		},
 	}
