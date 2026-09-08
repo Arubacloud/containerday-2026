@@ -1,10 +1,10 @@
 # containerday-2026
 
-A Crossplane v2 project showcasing declarative platform APIs for ContainerDay 2026.
+A Crossplane v2 project that exposes a **platform API** hiding all ArubaCloud infrastructure details. A developer creates one object and gets a running Docker container on a provisioned VM.
 
-## What is ApplicationEnvironment?
+---
 
-`ApplicationEnvironment` is a platform API that provisions a virtual machine and deploys a Docker image onto it. The user only needs to specify a Docker image — all infrastructure details are hidden.
+## User-facing API
 
 ```yaml
 apiVersion: platform.example.com/v1alpha1
@@ -13,125 +13,339 @@ metadata:
   name: my-app
   namespace: default
 spec:
-  image: nginx:latest
+  image: nginx:latest   # any Docker image
+  port: 80              # port the container listens on (default: 9898)
 ```
+
+After creation, check status:
+
+```bash
+kubectl get applicationenvironment my-app
+# NAME     SYNCED   READY   ...
+# my-app   True     True
+
+kubectl get applicationenvironment my-app -o jsonpath='{.status.endpoint}'
+# http://1.2.3.4:80
+```
+
+### Spec fields
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `spec.image` | string | yes | — | Docker image to deploy (e.g. `nginx:latest`, `ghcr.io/org/app:v1`) |
+| `spec.port` | integer | no | `9898` | TCP port the container listens on. Used to build `status.endpoint` and open the security group. |
+
+### Status fields
+
+| Field | Description |
+|---|---|
+| `status.endpoint` | `http://<publicIp>:<port>` — reachable once `Ready=True` |
+| `status.conditions` | Standard Crossplane conditions (`Synced`, `Ready`, `Responsive`) |
+
+---
 
 ## Architecture
 
 ```
-ApplicationEnvironment (user-facing API)
-        |
-        v
-Crossplane Composition
-        |
-        +-- ArubaCloud Resources (Project, VPC, Subnet, SG, EIP, Keypair, Blockstorage)
-        |
-        +-- ArubaCloud Cloudserver MR  (managed by provider-arubacloud)
-        |
-        +-- function-appenv-deployer
-              |
-              +-- waits for Cloudserver Ready + publicIp
-              |
-              +-- reads SSH private key from Kubernetes Secret
-              |
-              +-- SSH ubuntu@<publicIp>
-              |
-              +-- checks/installs Docker (idempotent)
-              |
-              +-- reconciles Docker container running spec.image
+ApplicationEnvironment (spec.image, spec.port)
+        │
+        ▼
+Crossplane Composition (Pipeline mode)
+        │
+        ├── Step 1: provision-infrastructure (function-patch-and-transform)
+        │     ├── ArubaCloud Project
+        │     ├── VPC
+        │     ├── Subnet
+        │     ├── Security Group
+        │     ├── Security Rules: SSH(22), HTTP(80), HTTPS(443), app(spec.port), ICMP, egress
+        │     ├── Elastic IP
+        │     ├── Boot Volume (Ubuntu 22.04, 100 GB)
+        │     ├── Keypair
+        │     └── Cloudserver (flavor CSO4A8, zone ITBG-1)
+        │
+        ├── Step 2: fetch-ssh-secret (function-extra-resources)
+        │     └── reads Secret/app-ssh-privkey from namespace default
+        │
+        ├── Step 3: deploy-application (function-appenv-deployer)
+        │     ├── waits for Cloudserver Ready + publicIp
+        │     ├── reads SSH private key from pipeline context
+        │     ├── SSH ubuntu@<publicIp>:22
+        │     ├── checks/installs Docker (idempotent)
+        │     ├── reconciles container named "application"
+        │     │     (--network host, --restart unless-stopped)
+        │     └── writes status.endpoint = http://<publicIp>:<port>
+        │
+        └── Step 4: auto-ready (function-auto-ready)
+              └── marks XR Ready=True only when all composed resources are ready
 ```
+
+All resource names are derived from the `ApplicationEnvironment` name — multiple environments never collide.
+
+---
 
 ## Prerequisites
 
-- Crossplane v2 installed
-- `provider-arubacloud v0.0.9` configured with a `ProviderConfig` named `default`
-- ArubaCloud credentials in a `ProviderConfig`
+| Requirement | Version | Notes |
+|---|---|---|
+| Crossplane | v2.4+ | Pipeline mode required |
+| provider-arubacloud | v0.0.9 | `ProviderConfig` named `default` must exist |
+| function-patch-and-transform | v0.8.0 | |
+| function-extra-resources | v0.3.0 | |
+| function-auto-ready | v0.2.1 | |
+| function-appenv-deployer | v0.0.7+ | built from this repo |
 
-## SSH Key Setup
+---
 
-The function reads the VM SSH **private key** from a Kubernetes Secret:
+## Installation
+
+### 1 — Install functions
 
 ```bash
-kubectl create secret generic app-ssh-privkey \
-  --namespace crossplane-system \
-  --from-file=privateKey=/path/to/id_ed25519
+kubectl apply -f - <<'EOF'
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-auto-ready
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/function-auto-ready:v0.2.1
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-extra-resources
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/function-extra-resources:v0.3.0
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-appenv-deployer
+spec:
+  package: ghcr.io/arubacloud/function-appenv-deployer:0.0.7
+EOF
+
+kubectl wait function/function-auto-ready \
+                function/function-extra-resources \
+                function/function-appenv-deployer \
+  --for=condition=Healthy --timeout=120s
 ```
 
-The corresponding **public key** must be registered in ArubaCloud as a Keypair. The composition expects it in:
+`function-patch-and-transform` is assumed to already be installed.
+
+### 2 — Create SSH key secrets
+
+Generate a key pair (skip if you already have one):
 
 ```bash
+ssh-keygen -t ed25519 -f /tmp/appenv-key -N "" -C "crossplane-appenv"
+```
+
+Create both secrets in the **`default` namespace**:
+
+```bash
+# Public key — registered with ArubaCloud per VM
 kubectl create secret generic app-ssh-pubkey \
-  --namespace crossplane-system \
-  --from-literal=value="ssh-ed25519 AAAA... user@host"
+  --namespace default \
+  --from-literal=value="$(cat /tmp/appenv-key.pub)"
+
+# Private key — read by function-appenv-deployer to SSH in
+kubectl create secret generic app-ssh-privkey \
+  --namespace default \
+  --from-file=privateKey=/tmp/appenv-key
 ```
 
-## Running the example
+> Both secrets must be in `default` because that is the namespace the XR lives in
+> and the namespace the `Keypair` managed resource resolves `valueSecretRef` from.
+
+### 3 — Grant RBAC to function-extra-resources
+
+Find the exact service account name (the hash suffix varies per cluster):
 
 ```bash
-kubectl apply -f examples/applicationenvironment/app.yaml
-kubectl get applicationenvironment test -o yaml
+kubectl get serviceaccount -n crossplane-system | grep extra-resources
+# function-extra-resources-f512969b007c
 ```
 
-Watch the status progress from provisioning → VM ready → Docker installed → image deployed → `Ready=True`.
-
-## Composition Function: function-appenv-deployer
-
-The function (`functions/appenv-deployer/`) implements the VM configuration lifecycle:
-
-1. **Observe Cloudserver** — reads the composed Cloudserver from the pipeline context.
-2. **Wait for Ready** — returns a non-ready result until `status.conditions[type=Ready].status == True`.
-3. **Get publicIp** — reads `status.atProvider.publicIp`; requeues if absent.
-4. **Read SSH key** — gets the private key from the `ssh-secret` extra resource (a Kubernetes Secret). The key is never logged or put into XR status.
-5. **SSH connect** — connects as `ubuntu` on port 22. Host key verification uses TOFU (accept-first-use); network-level security groups provide compensating controls.
-6. **Ensure Docker** — runs `command -v docker`; if absent, installs via `get.docker.com` (idempotent). Starts the daemon with `systemctl`.
-7. **Reconcile container** — uses `docker inspect` to check container state, then:
-   - Container absent → `docker run -d --name application --restart unless-stopped <image>`
-   - Container present, correct image, running → no-op
-   - Container present, wrong image → `docker rm -f` + `docker run`
-   - Container stopped → `docker start`
-
-### Security
-
-- Private keys are never logged, never put into XR status, never in error messages.
-- The function requests only the `app-ssh-privkey` Secret via the extra-resources mechanism.
-- RBAC should grant the function's ServiceAccount `get` on that specific Secret only.
-
-### RBAC
-
-Apply the following to allow the function to read the SSH secret:
-
-```yaml
+```bash
+kubectl apply -f - <<EOF
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: function-appenv-deployer
-  namespace: crossplane-system
+  name: function-extra-resources-ssh-secret
+  namespace: default
 rules:
 - apiGroups: [""]
   resources: ["secrets"]
   resourceNames: ["app-ssh-privkey"]
-  verbs: ["get"]
+  verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: function-appenv-deployer
-  namespace: crossplane-system
+  name: function-extra-resources-ssh-secret
+  namespace: default
 subjects:
 - kind: ServiceAccount
-  name: function-appenv-deployer
+  name: function-extra-resources-f512969b007c   # adjust hash
   namespace: crossplane-system
 roleRef:
   kind: Role
-  name: function-appenv-deployer
+  name: function-extra-resources-ssh-secret
   apiGroup: rbac.authorization.k8s.io
+EOF
 ```
 
-## Building the function
+### 4 — Apply XRD and Composition
+
+```bash
+kubectl apply -f apis/applicationenvironments/definition.yaml
+kubectl apply -f apis/applicationenvironments/composition.yaml
+```
+
+---
+
+## Usage
+
+### Deploy an application
+
+```bash
+kubectl apply -f examples/applicationenvironment/app.yaml
+```
+
+Watch progress (infrastructure takes a few minutes to provision):
+
+```bash
+kubectl get applicationenvironment test -w
+```
+
+Events during reconciliation:
+
+```
+Waiting for Cloudserver "cloudserver" to be provisioned
+Waiting for Cloudserver to become ready
+Waiting for Cloudserver publicIp to be assigned
+Waiting for SSH secret: ...          ← first reconcile only
+Application "..." deployed successfully as container "application"
+```
+
+Once `READY=True`:
+
+```bash
+curl $(kubectl get applicationenvironment test -o jsonpath='{.status.endpoint}')
+```
+
+### Change the image
+
+```bash
+kubectl patch applicationenvironment test \
+  --type=merge -p '{"spec":{"image":"nginx:latest","port":80}}'
+```
+
+Within ~60 seconds the function detects the image mismatch, removes the old container, and runs the new one. The endpoint updates to `http://<ip>:80`.
+
+### Self-healing
+
+The function reconciles every ~60 seconds. If you manually remove or stop the container on the VM, it will be recreated automatically on the next cycle.
+
+---
+
+## Composition Function: function-appenv-deployer
+
+Source: `functions/appenv-deployer/`  
+Package: `ghcr.io/arubacloud/function-appenv-deployer`  
+Built and pushed via: `.github/workflows/function-appenv-deployer.yaml`
+
+### Reconciliation steps
+
+1. **Parse input** — reads `cloudserverResourceName`, `sshUser`, `sshPort`, `containerName` from the Composition's static input.
+2. **Read XR spec** — reads `spec.image` and `spec.port` from the observed XR.
+3. **Observe Cloudserver** — looks up the `cloudserver` composed resource. Returns non-fatal if not yet observed.
+4. **Check readiness** — verifies `status.conditions[type=Ready].status == True`.
+5. **Get publicIp** — reads `status.atProvider.publicIp`. Returns non-fatal if absent.
+6. **Read SSH key** — reads from pipeline context key `apiextensions.crossplane.io/extra-resources` populated by `function-extra-resources`. Base64-decodes the Secret value. Returns non-fatal if context not yet populated (first reconcile).
+7. **SSH connect** — dials `ubuntu@<publicIp>:22` using the private key. Timeout: 30s.
+8. **Ensure Docker** — runs `command -v docker`; if missing, installs via `get.docker.com`. Starts with `systemctl enable --now docker`.
+9. **Reconcile container** — inspects `image`, `running`, `networkMode`. Recreates if any differ from desired. Uses `--network host` so all container ports are accessible directly on the VM's public IP.
+10. **Write endpoint** — sets `status.endpoint = http://<publicIp>:<port>` on the desired XR.
+
+### Container reconciliation matrix
+
+| State | Action |
+|---|---|
+| Does not exist | `docker run -d --name application --restart unless-stopped --network host <image>` |
+| Exists, correct image, running, host network | no-op |
+| Exists, wrong image | `docker rm -f` → `docker run` |
+| Exists, not host network | `docker rm -f` → `docker run` |
+| Exists, correct image, stopped | `docker start application` |
+
+### Security
+
+- SSH private key is read from pipeline context and never logged, never written to XR status, never included in error messages.
+- Host key verification uses TOFU (accept-first-use). Security groups restrict VM access to SSH and declared application ports.
+- RBAC grants `function-extra-resources` `get`+`list` on `app-ssh-privkey` only.
+
+---
+
+## Building and releasing the function
+
+Tests:
 
 ```bash
 cd functions/appenv-deployer
-go build ./...
-go test ./...
-docker build -t function-appenv-deployer:latest .
+go test ./... -v -race
+```
+
+Build and push (done automatically by CI on every push to `main` and `v*` tags):
+
+```bash
+# 1. Build runtime image
+docker build -t function-appenv-deployer-runtime:local .
+
+# 2. Build Crossplane xpkg (not a plain Docker image)
+crossplane xpkg build \
+  --package-root . \
+  --embed-runtime-image function-appenv-deployer-runtime:local \
+  -o /tmp/function-appenv-deployer.xpkg
+
+# 3. Push
+crossplane xpkg push \
+  --package-files /tmp/function-appenv-deployer.xpkg \
+  ghcr.io/arubacloud/function-appenv-deployer:latest
+```
+
+CI workflow: `.github/workflows/function-appenv-deployer.yaml`
+
+---
+
+## Repository structure
+
+```
+apis/
+  applicationenvironments/
+    definition.yaml       ← XRD: ApplicationEnvironment CRD
+    composition.yaml      ← Composition: 14 composed resources + 4 pipeline steps
+
+examples/
+  applicationenvironment/
+    app.yaml              ← Example XR
+
+functions/
+  appenv-deployer/
+    crossplane.yaml       ← Crossplane package metadata
+    Dockerfile            ← Runtime image
+    main.go               ← gRPC server entrypoint
+    input/v1alpha1/       ← DeployerInput type (composition-level config)
+    internal/
+      fn/                 ← RunFunction implementation
+      deployer/           ← SSH + Docker lifecycle logic
+      ssh/                ← SSH Client interface + real implementation
+
+docs/
+  requirements.md
+  how-composition-functions-work.md
+
+others/                   ← Reference standalone ArubaCloud resource examples
+.github/
+  workflows/
+    function-appenv-deployer.yaml
 ```

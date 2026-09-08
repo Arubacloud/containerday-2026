@@ -4,5 +4,9 @@ metadata:
   name: test
   namespace: default
 spec:
+  # Docker image to run on the provisioned VM.
   image: docker.io/stefanprodan/podinfo:6.11.0
+  # TCP port the container listens on.
+  # The security group is opened for this port automatically.
+  # Access the app at status.endpoint once Ready=True.
   port: 9898

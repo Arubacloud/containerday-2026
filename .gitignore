@@ -1,6 +1,9 @@
 # tokensave index (local tooling, not part of the project)
 .tokensave/
 
+# Claude Code local memory (not part of the project)
+.claude/
+
 # Go build output
 functions/appenv-deployer/function
 *.exe

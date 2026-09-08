@@ -14,18 +14,18 @@ spec:
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Function
-      package: xpkg.crossplane.io/crossplane-contrib/function-auto-ready
-      version: '>=v0.0.0'
+      package: xpkg.upbound.io/crossplane-contrib/function-auto-ready
+      version: 'v0.2.1'
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Function
       package: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform
-      version: '>=v0.0.0'
+      version: 'v0.8.0'
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
       kind: Function
       package: xpkg.upbound.io/crossplane-contrib/function-extra-resources
-      version: '>=v0.0.0'
+      version: 'v0.3.0'
   repository: github.com/Arubacloud/containerday-2026
