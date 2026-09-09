@@ -155,15 +155,14 @@ kubectl create secret generic arubacloud-credentials \
   }'
 ```
 
-Then create the ProviderConfig named `default` (all managed resources reference this name):
+Then create the `ClusterProviderConfig` named `default` (cluster-scoped — all composed managed resources reference it):
 
 ```bash
 kubectl apply -f - <<'EOF'
 apiVersion: arubacloud.crossplane.io/v1beta1
-kind: ProviderConfig
+kind: ClusterProviderConfig
 metadata:
   name: default
-  namespace: crossplane-system
 spec:
   credentials:
     source: Secret

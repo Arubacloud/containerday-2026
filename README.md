@@ -88,7 +88,7 @@ All resource names are derived from the `ApplicationEnvironment` name — multip
 | Requirement | Version | Notes |
 |---|---|---|
 | Crossplane | v2.4+ | Pipeline mode required |
-| provider-arubacloud | v0.0.9 | `ProviderConfig` named `default` must exist |
+| provider-arubacloud | v0.0.9 | `ClusterProviderConfig` named `default` must exist |
 | function-patch-and-transform | v0.8.0 | |
 | function-extra-resources | v0.3.0 | |
 | function-auto-ready | v0.2.1 | |
@@ -102,7 +102,7 @@ There are two ways to install the platform. Steps 1–3 are required in both cas
 
 ---
 
-### Step 1 — ArubaCloud credentials and ProviderConfig
+### Step 1 — ArubaCloud credentials and ClusterProviderConfig
 
 Create the credentials secret:
 
@@ -116,15 +116,14 @@ kubectl create secret generic arubacloud-credentials \
   }'
 ```
 
-Create the ProviderConfig (must be named `default` — all composed resources reference it):
+Create the `ClusterProviderConfig` (cluster-scoped — no namespace required):
 
 ```bash
 kubectl apply -f - <<'EOF'
 apiVersion: arubacloud.crossplane.io/v1beta1
-kind: ProviderConfig
+kind: ClusterProviderConfig
 metadata:
   name: default
-  namespace: crossplane-system
 spec:
   credentials:
     source: Secret

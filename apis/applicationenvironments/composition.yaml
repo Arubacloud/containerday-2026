@@ -32,7 +32,7 @@ spec:
                 - xplnln
                 - aenv
             providerConfigRef:
-              kind: ProviderConfig
+              kind: ClusterProviderConfig
               name: default
         patches:
         - type: FromCompositeFieldPath
@@ -63,7 +63,7 @@ spec:
               tags:
                 - xpln
             providerConfigRef:
-              kind: ProviderConfig
+              kind: ClusterProviderConfig
               name: default
         patches:
         - type: FromCompositeFieldPath
@@ -103,7 +103,7 @@ spec:
               tags:
                 - xpln
             providerConfigRef:
-              kind: ProviderConfig
+              kind: ClusterProviderConfig
               name: default
         patches:
         - type: FromCompositeFieldPath
@@ -150,7 +150,7 @@ spec:
               tags:
                 - xpln
             providerConfigRef:
-              kind: ProviderConfig
+              kind: ClusterProviderConfig
               name: default
         patches:
         - type: FromCompositeFieldPath
@@ -205,7 +205,7 @@ spec:
                   kind: Ip
                   value: "0.0.0.0/0"
             providerConfigRef:
-              kind: ProviderConfig
+              kind: ClusterProviderConfig
               name: default
         patches:
         - type: FromCompositeFieldPath
@@ -264,7 +264,7 @@ spec:
                   kind: Ip
                   value: "0.0.0.0/0"
             providerConfigRef:
-              kind: ProviderConfig
+              kind: ClusterProviderConfig
               name: default
         patches:
         - type: FromCompositeFieldPath
@@ -323,7 +323,7 @@ spec:
                   kind: Ip
                   value: "0.0.0.0/0"
             providerConfigRef:
-              kind: ProviderConfig
+              kind: ClusterProviderConfig
               name: default
         patches:
         - type: FromCompositeFieldPath
@@ -382,7 +382,7 @@ spec:
                   kind: Ip
                   value: "0.0.0.0/0"
             providerConfigRef:
-              kind: ProviderConfig
+              kind: ClusterProviderConfig
               name: default
         patches:
         - type: FromCompositeFieldPath
@@ -441,7 +441,7 @@ spec:
                   kind: Ip
                   value: "0.0.0.0/0"
             providerConfigRef:
-              kind: ProviderConfig
+              kind: ClusterProviderConfig
               name: default
         patches:
         - type: FromCompositeFieldPath
@@ -500,7 +500,7 @@ spec:
                   kind: Ip
                   value: "0.0.0.0/0"
             providerConfigRef:
-              kind: ProviderConfig
+              kind: ClusterProviderConfig
               name: default
         patches:
         - type: FromCompositeFieldPath
@@ -556,7 +556,7 @@ spec:
               tags:
                 - xpln
             providerConfigRef:
-              kind: ProviderConfig
+              kind: ClusterProviderConfig
               name: default
         patches:
         - type: FromCompositeFieldPath
@@ -609,7 +609,7 @@ spec:
               tags:
                 - xpln
             providerConfigRef:
-              kind: ProviderConfig
+              kind: ClusterProviderConfig
               name: default
         patches:
         - type: FromCompositeFieldPath
@@ -653,7 +653,7 @@ spec:
                 name: app-ssh-pubkey
                 key: value
             providerConfigRef:
-              kind: ProviderConfig
+              kind: ClusterProviderConfig
               name: default
         patches:
         - type: FromCompositeFieldPath
@@ -702,7 +702,7 @@ spec:
                 flavorName: CSO4A8
               storage: {}
             providerConfigRef:
-              kind: ProviderConfig
+              kind: ClusterProviderConfig
               name: default
         patches:
         - type: FromCompositeFieldPath
