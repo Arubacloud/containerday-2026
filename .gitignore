@@ -19,6 +19,7 @@ go.work.sum
 
 # Crossplane package build artifacts
 *.xpkg
+_output/
 
 # Editor / IDE
 .idea/
