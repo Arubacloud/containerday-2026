@@ -141,7 +141,43 @@ kubectl wait function/crossplane-contrib-function-auto-ready \
 > These names match exactly what the Configuration package installs automatically.
 > Using these names for manual installs keeps both install paths compatible.
 
-### 2 — Create SSH key secrets
+### 2 — Create ArubaCloud credentials and ProviderConfig
+
+Create the credentials secret with your ArubaCloud `client_id` and `client_secret`:
+
+```bash
+kubectl create secret generic arubacloud-credentials \
+  --namespace crossplane-system \
+  --from-literal=credentials='{
+    "client_id":     "YOUR_CLIENT_ID",
+    "client_secret": "YOUR_CLIENT_SECRET",
+    "resource_timeout": "30m"
+  }'
+```
+
+Then create the ProviderConfig that points to it:
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: arubacloud.crossplane.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: default
+  namespace: crossplane-system
+spec:
+  credentials:
+    source: Secret
+    secretRef:
+      name: arubacloud-credentials
+      namespace: crossplane-system
+      key: credentials
+EOF
+```
+
+> The Composition references `providerConfigRef.name: default` on every managed resource.
+> The ProviderConfig must be named `default` and live in `crossplane-system`.
+
+### 3 — Create SSH key secrets
 
 Generate a key pair (skip if you already have one):
 

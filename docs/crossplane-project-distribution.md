@@ -142,7 +142,38 @@ This pushes two OCI images to `ghcr.io/arubacloud/containerday-2026`:
 ### Prerequisites on the target cluster
 
 1. Crossplane v2.4+ installed
-2. `ProviderConfig` named `default` configured with ArubaCloud credentials
+
+2. **ArubaCloud credentials secret and ProviderConfig** — create the credentials secret:
+
+```bash
+kubectl create secret generic arubacloud-credentials \
+  --namespace crossplane-system \
+  --from-literal=credentials='{
+    "client_id":     "YOUR_CLIENT_ID",
+    "client_secret": "YOUR_CLIENT_SECRET",
+    "resource_timeout": "30m"
+  }'
+```
+
+Then create the ProviderConfig named `default` (all managed resources reference this name):
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: arubacloud.crossplane.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: default
+  namespace: crossplane-system
+spec:
+  credentials:
+    source: Secret
+    secretRef:
+      name: arubacloud-credentials
+      namespace: crossplane-system
+      key: credentials
+EOF
+```
+
 3. SSH key secrets created (cluster-specific — not included in the package):
 
 ```bash
