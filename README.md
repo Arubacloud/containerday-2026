@@ -105,32 +105,41 @@ kubectl apply -f - <<'EOF'
 apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
-  name: function-auto-ready
+  name: crossplane-contrib-function-auto-ready
 spec:
   package: xpkg.upbound.io/crossplane-contrib/function-auto-ready:v0.2.1
 ---
 apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
-  name: function-extra-resources
+  name: crossplane-contrib-function-extra-resources
 spec:
   package: xpkg.upbound.io/crossplane-contrib/function-extra-resources:v0.3.0
 ---
 apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
-  name: function-appenv-deployer
+  name: crossplane-contrib-function-patch-and-transform
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.8.0
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: arubacloud-containerday-2026appenv-deployer
 spec:
   package: ghcr.io/arubacloud/function-appenv-deployer:0.0.7
 EOF
 
-kubectl wait function/function-auto-ready \
-                function/function-extra-resources \
-                function/function-appenv-deployer \
+kubectl wait function/crossplane-contrib-function-auto-ready \
+                function/crossplane-contrib-function-extra-resources \
+                function/crossplane-contrib-function-patch-and-transform \
+                function/arubacloud-containerday-2026appenv-deployer \
   --for=condition=Healthy --timeout=120s
 ```
 
-`function-patch-and-transform` is assumed to already be installed.
+> These names match exactly what the Configuration package installs automatically.
+> Using these names for manual installs keeps both install paths compatible.
 
 ### 2 — Create SSH key secrets
 
