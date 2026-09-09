@@ -14,7 +14,7 @@ spec:
   # multiple ApplicationEnvironment objects never collide.
   - step: provision-infrastructure
     functionRef:
-      name: function-patch-and-transform
+      name: crossplane-contrib-function-patch-and-transform
     input:
       apiVersion: pt.fn.crossplane.io/v1beta1
       kind: Resources
@@ -790,7 +790,7 @@ spec:
   # can read it. This is a platform concern; the user never sees this secret.
   - step: fetch-ssh-secret
     functionRef:
-      name: function-extra-resources
+      name: crossplane-contrib-function-extra-resources
     input:
       apiVersion: extra-resources.fn.crossplane.io/v1beta1
       kind: Input
@@ -807,7 +807,7 @@ spec:
   # Step 3 – Deploy the Docker image onto the provisioned VM via SSH.
   - step: deploy-application
     functionRef:
-      name: function-appenv-deployer
+      name: arubacloud-containerday-2026appenv-deployer
     input:
       apiVersion: appenv.platform.example.com/v1alpha1
       kind: DeployerInput
@@ -824,4 +824,4 @@ spec:
   # Step 4 – Mark the XR ready only after all composed resources are ready.
   - step: auto-ready
     functionRef:
-      name: function-auto-ready
+      name: crossplane-contrib-function-auto-ready
