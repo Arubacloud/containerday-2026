@@ -60,6 +60,14 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 		return rsp, nil
 	}
 
+	// If the XR is being deleted, skip SSH deployment entirely.
+	// Crossplane will garbage-collect the composed resources; there is nothing
+	// for this function to do and attempting SSH could cause confusing errors.
+	if dt, _, _ := unstructuredString(xr.Resource.Object, "metadata", "deletionTimestamp"); dt != "" {
+		log.Info("XR is being deleted, skipping deployment")
+		return rsp, nil
+	}
+
 	image, err := xr.Resource.GetString("spec.image")
 	if err != nil || image == "" {
 		response.Fatal(rsp, errors.New("spec.image is required"))
@@ -289,6 +297,32 @@ func getSSHKeyFromContext(req *fnv1.RunFunctionRequest, ref v1alpha1.SSHSecretRe
 	}
 
 	return pem, nil
+}
+
+// unstructuredString walks a dot-separated path in an unstructured map and returns the string value.
+func unstructuredString(obj map[string]interface{}, path ...string) (string, bool, error) {
+	cur := obj
+	for _, key := range path[:len(path)-1] {
+		next, ok := cur[key]
+		if !ok {
+			return "", false, nil
+		}
+		m, ok := next.(map[string]interface{})
+		if !ok {
+			return "", false, nil
+		}
+		cur = m
+	}
+	last := path[len(path)-1]
+	val, ok := cur[last]
+	if !ok {
+		return "", false, nil
+	}
+	s, ok := val.(string)
+	if !ok {
+		return "", false, nil
+	}
+	return s, true, nil
 }
 
 // sanitizeError strips any path/credential noise from an error message.
