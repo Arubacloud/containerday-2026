@@ -98,52 +98,13 @@ All resource names are derived from the `ApplicationEnvironment` name — multip
 
 ## Installation
 
-### 1 — Install functions
+There are two ways to install the platform. Steps 1–3 are required in both cases.
 
-```bash
-kubectl apply -f - <<'EOF'
-apiVersion: pkg.crossplane.io/v1
-kind: Function
-metadata:
-  name: crossplane-contrib-function-auto-ready
-spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-auto-ready:v0.2.1
 ---
-apiVersion: pkg.crossplane.io/v1
-kind: Function
-metadata:
-  name: crossplane-contrib-function-extra-resources
-spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-extra-resources:v0.3.0
----
-apiVersion: pkg.crossplane.io/v1
-kind: Function
-metadata:
-  name: crossplane-contrib-function-patch-and-transform
-spec:
-  package: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.8.0
----
-apiVersion: pkg.crossplane.io/v1
-kind: Function
-metadata:
-  name: arubacloud-containerday-2026appenv-deployer
-spec:
-  package: ghcr.io/arubacloud/function-appenv-deployer:0.0.7
-EOF
 
-kubectl wait function/crossplane-contrib-function-auto-ready \
-                function/crossplane-contrib-function-extra-resources \
-                function/crossplane-contrib-function-patch-and-transform \
-                function/arubacloud-containerday-2026appenv-deployer \
-  --for=condition=Healthy --timeout=120s
-```
+### Step 1 — ArubaCloud credentials and ProviderConfig
 
-> These names match exactly what the Configuration package installs automatically.
-> Using these names for manual installs keeps both install paths compatible.
-
-### 2 — Create ArubaCloud credentials and ProviderConfig
-
-Create the credentials secret with your ArubaCloud `client_id` and `client_secret`:
+Create the credentials secret:
 
 ```bash
 kubectl create secret generic arubacloud-credentials \
@@ -155,7 +116,7 @@ kubectl create secret generic arubacloud-credentials \
   }'
 ```
 
-Then create the ProviderConfig that points to it:
+Create the ProviderConfig (must be named `default` — all composed resources reference it):
 
 ```bash
 kubectl apply -f - <<'EOF'
@@ -174,10 +135,9 @@ spec:
 EOF
 ```
 
-> The Composition references `providerConfigRef.name: default` on every managed resource.
-> The ProviderConfig must be named `default` and live in `crossplane-system`.
+---
 
-### 3 — Create SSH key secrets
+### Step 2 — SSH key secrets
 
 Generate a key pair (skip if you already have one):
 
@@ -199,16 +159,18 @@ kubectl create secret generic app-ssh-privkey \
   --from-file=privateKey=/tmp/appenv-key
 ```
 
-> Both secrets must be in `default` because that is the namespace the XR lives in
-> and the namespace the `Keypair` managed resource resolves `valueSecretRef` from.
+> Both secrets must be in `default` — the namespace of the XR and the namespace
+> the `Keypair` managed resource resolves `valueSecretRef` from.
 
-### 3 — Grant RBAC to function-extra-resources
+---
 
-Find the exact service account name (the hash suffix varies per cluster):
+### Step 3 — RBAC for function-extra-resources
+
+Find the service account name (the hash suffix is cluster-specific):
 
 ```bash
 kubectl get serviceaccount -n crossplane-system | grep extra-resources
-# function-extra-resources-f512969b007c
+# crossplane-contrib-function-extra-resources-<hash>
 ```
 
 ```bash
@@ -231,7 +193,7 @@ metadata:
   namespace: default
 subjects:
 - kind: ServiceAccount
-  name: function-extra-resources-f512969b007c   # adjust hash
+  name: crossplane-contrib-function-extra-resources-<hash>   # adjust hash
   namespace: crossplane-system
 roleRef:
   kind: Role
@@ -240,12 +202,102 @@ roleRef:
 EOF
 ```
 
-### 4 — Apply XRD and Composition
+---
+
+### Step 4 — Install the platform
+
+Choose **one** of the two options below.
+
+#### Option A — Configuration package (recommended)
+
+One command installs the provider, all functions, the XRD and the Composition automatically:
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: pkg.crossplane.io/v1
+kind: Configuration
+metadata:
+  name: containerday-2026
+spec:
+  package: ghcr.io/arubacloud/containerday-2026:latest
+EOF
+
+kubectl wait configuration/containerday-2026 \
+  --for=condition=Healthy --timeout=5m
+```
+
+To upgrade to a new version:
+
+```bash
+kubectl patch configuration containerday-2026 \
+  --type=merge -p '{"spec":{"package":"ghcr.io/arubacloud/containerday-2026:v1.0.0"}}'
+```
+
+To uninstall:
+
+```bash
+kubectl delete configuration containerday-2026
+```
+
+> When upgrading, delete any existing embedded function first to avoid digest conflicts:
+> `kubectl delete function arubacloud-containerday-2026appenv-deployer`
+
+---
+
+#### Option B — Manual install
+
+Install each component individually. Use this if you need to pin specific versions independently or the cluster already has some functions installed.
+
+**Install functions:**
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: crossplane-contrib-function-patch-and-transform
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.8.0
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: crossplane-contrib-function-extra-resources
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/function-extra-resources:v0.3.0
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: crossplane-contrib-function-auto-ready
+spec:
+  package: xpkg.upbound.io/crossplane-contrib/function-auto-ready:v0.2.1
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: arubacloud-containerday-2026appenv-deployer
+spec:
+  package: ghcr.io/arubacloud/function-appenv-deployer:0.0.8
+EOF
+
+kubectl wait \
+  function/crossplane-contrib-function-patch-and-transform \
+  function/crossplane-contrib-function-extra-resources \
+  function/crossplane-contrib-function-auto-ready \
+  function/arubacloud-containerday-2026appenv-deployer \
+  --for=condition=Healthy --timeout=120s
+```
+
+**Apply XRD and Composition:**
 
 ```bash
 kubectl apply -f apis/applicationenvironments/definition.yaml
 kubectl apply -f apis/applicationenvironments/composition.yaml
 ```
+
+> Function names must match exactly — these names mirror what the Configuration package
+> generates, keeping both install paths fully compatible.
 
 ---
 
