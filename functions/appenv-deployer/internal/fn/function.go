@@ -193,6 +193,25 @@ func buildDatabaseEnvVars(
 	rsp *fnv1.RunFunctionResponse,
 	log logging.Logger,
 ) (map[string]string, bool) {
+	// Wait for the Dbaas cluster itself to be Ready before deploying the
+	// application. This ensures MySQL is accessible when the container starts
+	// and that Database/Dbaasuser/Databasegrant have had time to be applied.
+	dbaasName := db.DbaasResourceName
+	if dbaasName == "" {
+		dbaasName = "dbaas"
+	}
+	dbaasRes, ok := observed[resource.Name(dbaasName)]
+	if !ok {
+		log.Info("Dbaas cluster not yet observed", "resource", dbaasName)
+		response.Normalf(rsp, "Waiting for Dbaas cluster %q to be provisioned", dbaasName)
+		return nil, false
+	}
+	if !isCloudserverReady(dbaasRes.Resource.Object) {
+		log.Info("Dbaas cluster not yet ready", "resource", dbaasName)
+		response.Normalf(rsp, "Waiting for Dbaas cluster %q to become ready", dbaasName)
+		return nil, false
+	}
+
 	eipName := db.DbaasEIPResourceName
 	if eipName == "" {
 		eipName = "dbaas-eip"

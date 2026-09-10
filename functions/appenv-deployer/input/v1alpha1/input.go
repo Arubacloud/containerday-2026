@@ -61,6 +61,12 @@ type SSHSecretRef struct {
 // MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD) plus common aliases so that
 // most MySQL-aware images work without per-image configuration.
 type DatabaseConfig struct {
+	// DbaasResourceName is the composition resource name of the Dbaas cluster.
+	// The function waits for this resource to be Ready before deploying the
+	// container, ensuring MySQL is accessible when the application starts.
+	// +kubebuilder:default=dbaas
+	DbaasResourceName string `json:"dbaasResourceName,omitempty"`
+
 	// DbaasEIPResourceName is the composition resource name of the Elasticip
 	// attached to the DBaaS cluster. The function reads status.atProvider.address
 	// from this resource to obtain the MySQL host.
