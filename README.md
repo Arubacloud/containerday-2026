@@ -150,7 +150,7 @@ kubectl create secret generic arubacloud-credentials \
 
 kubectl apply -f - <<'EOF'
 apiVersion: arubacloud.crossplane.io/v1beta1
-kind: ClusterProviderConfig
+kind: ProviderConfig
 metadata:
   name: default
 spec:
@@ -275,7 +275,7 @@ kubectl create secret generic arubacloud-credentials \
 
 kubectl apply -f - <<'EOF'
 apiVersion: arubacloud.crossplane.io/v1beta1
-kind: ClusterProviderConfig
+kind: ProviderConfig
 metadata:
   name: default
 spec:
