@@ -98,13 +98,37 @@ All resource names are derived from the `ApplicationEnvironment` name — multip
 
 ## Installation
 
-There are two ways to install the platform. Steps 1–3 are required in both cases.
+> **Important:** The `ClusterProviderConfig` CRD is provided by `provider-arubacloud`.
+> It does not exist until the provider is installed. Always install the platform first
+> and wait for the provider to become Healthy before creating the `ClusterProviderConfig`.
 
 ---
 
-### Step 1 — ArubaCloud credentials and ClusterProviderConfig
+### Option A — Configuration package (recommended)
 
-Create the credentials secret:
+One command installs the provider, all functions, the XRD and the Composition automatically.
+
+**1. Install:**
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: pkg.crossplane.io/v1
+kind: Configuration
+metadata:
+  name: containerday-2026
+spec:
+  package: ghcr.io/arubacloud/containerday-2026:latest
+EOF
+```
+
+**2. Wait for the provider to become Healthy** (installs its CRDs):
+
+```bash
+kubectl wait provider/arubacloud-provider-arubacloud \
+  --for=condition=Healthy --timeout=5m
+```
+
+**3. Create credentials secret and `ClusterProviderConfig`:**
 
 ```bash
 kubectl create secret generic arubacloud-credentials \
@@ -114,11 +138,7 @@ kubectl create secret generic arubacloud-credentials \
     "client_secret": "YOUR_CLIENT_SECRET",
     "resource_timeout": "30m"
   }'
-```
 
-Create the `ClusterProviderConfig` (cluster-scoped — no namespace required):
-
-```bash
 kubectl apply -f - <<'EOF'
 apiVersion: arubacloud.crossplane.io/v1beta1
 kind: ClusterProviderConfig
@@ -134,45 +154,33 @@ spec:
 EOF
 ```
 
----
+**4. Wait for the full Configuration to be Healthy:**
 
-### Step 2 — SSH key secrets
+```bash
+kubectl wait configuration/containerday-2026 \
+  --for=condition=Healthy --timeout=5m
+```
 
-Generate a key pair (skip if you already have one):
+**5. Create SSH key secrets** (in `default` — the XR namespace):
 
 ```bash
 ssh-keygen -t ed25519 -f /tmp/appenv-key -N "" -C "crossplane-appenv"
-```
 
-Create both secrets in the **`default` namespace**:
-
-```bash
-# Public key — registered with ArubaCloud per VM
 kubectl create secret generic app-ssh-pubkey \
   --namespace default \
   --from-literal=value="$(cat /tmp/appenv-key.pub)"
 
-# Private key — read by function-appenv-deployer to SSH in
 kubectl create secret generic app-ssh-privkey \
   --namespace default \
   --from-file=privateKey=/tmp/appenv-key
 ```
 
-> Both secrets must be in `default` — the namespace of the XR and the namespace
-> the `Keypair` managed resource resolves `valueSecretRef` from.
-
----
-
-### Step 3 — RBAC for function-extra-resources
-
-Find the service account name (the hash suffix is cluster-specific):
+**6. Grant RBAC to function-extra-resources** (hash suffix is cluster-specific):
 
 ```bash
-kubectl get serviceaccount -n crossplane-system | grep extra-resources
-# crossplane-contrib-function-extra-resources-<hash>
-```
+SA=$(kubectl get serviceaccount -n crossplane-system \
+  --no-headers -o custom-columns=":metadata.name" | grep extra-resources | head -1)
 
-```bash
 kubectl apply -f - <<EOF
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -192,7 +200,7 @@ metadata:
   namespace: default
 subjects:
 - kind: ServiceAccount
-  name: crossplane-contrib-function-extra-resources-<hash>   # adjust hash
+  name: ${SA}
   namespace: crossplane-system
 roleRef:
   kind: Role
@@ -201,53 +209,71 @@ roleRef:
 EOF
 ```
 
----
-
-### Step 4 — Install the platform
-
-Choose **one** of the two options below.
-
-#### Option A — Configuration package (recommended)
-
-One command installs the provider, all functions, the XRD and the Composition automatically:
+**Upgrade:**
 
 ```bash
-kubectl apply -f - <<'EOF'
-apiVersion: pkg.crossplane.io/v1
-kind: Configuration
-metadata:
-  name: containerday-2026
-spec:
-  package: ghcr.io/arubacloud/containerday-2026:latest
-EOF
+# Delete the embedded function first to avoid digest conflicts
+kubectl delete function arubacloud-containerday-2026appenv-deployer
 
-kubectl wait configuration/containerday-2026 \
-  --for=condition=Healthy --timeout=5m
-```
-
-To upgrade to a new version:
-
-```bash
 kubectl patch configuration containerday-2026 \
   --type=merge -p '{"spec":{"package":"ghcr.io/arubacloud/containerday-2026:v1.0.0"}}'
 ```
 
-To uninstall:
+**Uninstall:**
 
 ```bash
 kubectl delete configuration containerday-2026
 ```
 
-> When upgrading, delete any existing embedded function first to avoid digest conflicts:
-> `kubectl delete function arubacloud-containerday-2026appenv-deployer`
-
 ---
 
-#### Option B — Manual install
+### Option B — Manual install
 
-Install each component individually. Use this if you need to pin specific versions independently or the cluster already has some functions installed.
+Use this if you need to pin versions independently or the cluster already has some packages installed.
 
-**Install functions:**
+**1. Install the provider and wait for its CRDs:**
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: arubacloud-provider-arubacloud
+spec:
+  package: xpkg.upbound.io/arubacloud/provider-arubacloud:v0.0.9
+EOF
+
+kubectl wait provider/arubacloud-provider-arubacloud \
+  --for=condition=Healthy --timeout=5m
+```
+
+**2. Create credentials secret and `ClusterProviderConfig`:**
+
+```bash
+kubectl create secret generic arubacloud-credentials \
+  --namespace crossplane-system \
+  --from-literal=credentials='{
+    "client_id":     "YOUR_CLIENT_ID",
+    "client_secret": "YOUR_CLIENT_SECRET",
+    "resource_timeout": "30m"
+  }'
+
+kubectl apply -f - <<'EOF'
+apiVersion: arubacloud.crossplane.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  credentials:
+    source: Secret
+    secretRef:
+      name: arubacloud-credentials
+      namespace: crossplane-system
+      key: credentials
+EOF
+```
+
+**3. Install functions:**
 
 ```bash
 kubectl apply -f - <<'EOF'
@@ -288,15 +314,14 @@ kubectl wait \
   --for=condition=Healthy --timeout=120s
 ```
 
-**Apply XRD and Composition:**
+**4. Apply XRD and Composition:**
 
 ```bash
 kubectl apply -f apis/applicationenvironments/definition.yaml
 kubectl apply -f apis/applicationenvironments/composition.yaml
 ```
 
-> Function names must match exactly — these names mirror what the Configuration package
-> generates, keeping both install paths fully compatible.
+**5. Create SSH key secrets and RBAC** (same as Option A steps 5–6 above).
 
 ---
 
