@@ -50,6 +50,21 @@ spec:
               endpoint:
                 description: HTTP endpoint to reach the deployed application once Ready=True.
                 type: string
+              databaseHost:
+                description: MySQL host (public IP of the DBaaS Elastic IP).
+                type: string
+              databasePort:
+                description: MySQL port (always 3306).
+                type: string
+              databaseName:
+                description: Logical database name.
+                type: string
+              databaseUser:
+                description: MySQL username.
+                type: string
+              databasePassword:
+                description: "MySQL password. NOTE: stored in plain text in etcd — restrict RBAC on this resource in production or use writeConnectionSecretToRef instead."
+                type: string
               conditions:
                 description: Crossplane conditions for this resource.
                 items:

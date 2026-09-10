@@ -148,13 +148,21 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 	log.Info("Application deployed successfully", "image", image, "container", input.Spec.ContainerName)
 	response.Normalf(rsp, "Application %q deployed successfully as container %q", image, input.Spec.ContainerName)
 
-	// Write the public IP into the XR status so users can discover the endpoint.
+	// Write runtime values into XR status.
 	dxr, err := request.GetDesiredCompositeResource(req)
 	if err == nil {
 		endpoint := fmt.Sprintf("http://%s:%d", publicIP, appPort)
-		if setErr := dxr.Resource.SetString("status.endpoint", endpoint); setErr == nil {
-			_ = response.SetDesiredCompositeResource(rsp, dxr)
+		_ = dxr.Resource.SetString("status.endpoint", endpoint)
+
+		if opts.EnvVars != nil {
+			_ = dxr.Resource.SetString("status.databaseHost", opts.EnvVars["MYSQL_HOST"])
+			_ = dxr.Resource.SetString("status.databasePort", opts.EnvVars["MYSQL_PORT"])
+			_ = dxr.Resource.SetString("status.databaseName", opts.EnvVars["MYSQL_DATABASE"])
+			_ = dxr.Resource.SetString("status.databaseUser", opts.EnvVars["MYSQL_USER"])
+			_ = dxr.Resource.SetString("status.databasePassword", opts.EnvVars["MYSQL_PASSWORD"])
 		}
+
+		_ = response.SetDesiredCompositeResource(rsp, dxr)
 	}
 
 	return rsp, nil
