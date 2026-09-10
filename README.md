@@ -171,9 +171,11 @@ kubectl wait configuration/containerday-2026 \
   --for=condition=Healthy --timeout=5m
 ```
 
-**Step 5 — Create SSH key secrets**
+**Step 5 — Create platform secrets**
 
-Both secrets must be in `default` — the namespace of the XR:
+All secrets must be in `default` — the namespace of the XR.
+
+SSH key pair (required by both `ApplicationEnvironment` and `Microservice`):
 
 ```bash
 ssh-keygen -t ed25519 -f /tmp/appenv-key -N "" -C "crossplane-appenv"
@@ -185,6 +187,14 @@ kubectl create secret generic app-ssh-pubkey \
 kubectl create secret generic app-ssh-privkey \
   --namespace default \
   --from-file=privateKey=/tmp/appenv-key
+```
+
+DB password (required by `Microservice` only):
+
+```bash
+kubectl create secret generic app-db-password \
+  --namespace default \
+  --from-literal=password=<your-db-password>
 ```
 
 **Step 6 — Grant RBAC to function-extra-resources**
@@ -204,7 +214,7 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["secrets"]
-  resourceNames: ["app-ssh-privkey"]
+  resourceNames: ["app-ssh-privkey", "app-db-password"]
   verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
