@@ -62,9 +62,6 @@ spec:
               databaseUser:
                 description: MySQL username.
                 type: string
-              databasePassword:
-                description: "MySQL password. NOTE: stored in plain text in etcd — restrict RBAC on this resource in production or use writeConnectionSecretToRef instead."
-                type: string
               conditions:
                 description: Crossplane conditions for this resource.
                 items:

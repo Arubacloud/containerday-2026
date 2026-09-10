@@ -6,8 +6,11 @@ metadata:
 spec:
   # adminer is a lightweight MySQL web admin UI.
   # Once Ready=True, open http://<status.endpoint> in your browser.
-  # Log in with: server=<auto-filled>, user=appuser, password=<from app-db-password secret>, database=app
+  # Log in with: server=<auto-filled>, user=appuser, password=<from my-svc-db-conn secret>, database=app
   image: adminer:4.8.1
   port: 8080
   database:
     engine: mysql
+  writeConnectionSecretToRef:
+    name: my-svc-db-conn
+    namespace: default

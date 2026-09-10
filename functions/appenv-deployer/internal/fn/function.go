@@ -148,18 +148,33 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 	log.Info("Application deployed successfully", "image", image, "container", input.Spec.ContainerName)
 	response.Normalf(rsp, "Application %q deployed successfully as container %q", image, input.Spec.ContainerName)
 
-	// Write runtime values into XR status.
+	// Write runtime values into XR status and connection secret.
 	dxr, err := request.GetDesiredCompositeResource(req)
 	if err == nil {
-		endpoint := fmt.Sprintf("http://%s:%d", publicIP, appPort)
-		_ = dxr.Resource.SetString("status.endpoint", endpoint)
+		_ = dxr.Resource.SetString("status.endpoint", fmt.Sprintf("http://%s:%d", publicIP, appPort))
 
 		if opts.EnvVars != nil {
+			// Non-sensitive connection details go into status for easy discoverability.
 			_ = dxr.Resource.SetString("status.databaseHost", opts.EnvVars["MYSQL_HOST"])
 			_ = dxr.Resource.SetString("status.databasePort", opts.EnvVars["MYSQL_PORT"])
 			_ = dxr.Resource.SetString("status.databaseName", opts.EnvVars["MYSQL_DATABASE"])
 			_ = dxr.Resource.SetString("status.databaseUser", opts.EnvVars["MYSQL_USER"])
-			_ = dxr.Resource.SetString("status.databasePassword", opts.EnvVars["MYSQL_PASSWORD"])
+
+			// Password and full DSN go into the connection secret (writeConnectionSecretToRef).
+			// Crossplane's XR controller writes these to the Secret named by the user;
+			// they never appear in the XR status or in any log line.
+			dxr.ConnectionDetails = resource.ConnectionDetails{
+				"username": []byte(opts.EnvVars["MYSQL_USER"]),
+				"password": []byte(opts.EnvVars["MYSQL_PASSWORD"]),
+				"host":     []byte(opts.EnvVars["MYSQL_HOST"]),
+				"port":     []byte(opts.EnvVars["MYSQL_PORT"]),
+				"database": []byte(opts.EnvVars["MYSQL_DATABASE"]),
+				"endpoint": []byte(fmt.Sprintf("mysql://%s:%s/%s",
+					opts.EnvVars["MYSQL_HOST"],
+					opts.EnvVars["MYSQL_PORT"],
+					opts.EnvVars["MYSQL_DATABASE"],
+				)),
+			}
 		}
 
 		_ = response.SetDesiredCompositeResource(rsp, dxr)
