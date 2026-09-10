@@ -88,6 +88,9 @@ spec:
             string:
               type: Format
               fmt: "%s-project"
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.atProvider.uri
+          toFieldPath: status.vpcUri
 
       # ── Subnet ──────────────────────────────────────────────────────────────
       - name: subnet
@@ -136,6 +139,9 @@ spec:
             string:
               type: Format
               fmt: "%s-vpc"
+        - type: ToCompositeFieldPath
+          fromFieldPath: status.atProvider.uri
+          toFieldPath: status.subnetUri
 
       # ── Security Group (VM) ──────────────────────────────────────────────────
       - name: security-group
@@ -981,21 +987,11 @@ spec:
               type: Format
               fmt: "%s-project"
         - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.network.vpcUriRefRef.name
-          transforms:
-          - type: string
-            string:
-              type: Format
-              fmt: "%s-vpc"
+          fromFieldPath: status.vpcUri
+          toFieldPath: spec.forProvider.network.vpcUriRef
         - type: FromCompositeFieldPath
-          fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.network.subnetUriRefRef.name
-          transforms:
-          - type: string
-            string:
-              type: Format
-              fmt: "%s-subnet"
+          fromFieldPath: status.subnetUri
+          toFieldPath: spec.forProvider.network.subnetUriRef
         - type: FromCompositeFieldPath
           fromFieldPath: metadata.name
           toFieldPath: spec.forProvider.network.elasticIpUriRefRef.name

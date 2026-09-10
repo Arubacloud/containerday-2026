@@ -73,6 +73,12 @@ spec:
               databaseUser:
                 description: MySQL username.
                 type: string
+              vpcUri:
+                description: Internal — VPC URI propagated from composed VPC resource.
+                type: string
+              subnetUri:
+                description: Internal — Subnet URI propagated from composed Subnet resource.
+                type: string
               conditions:
                 description: Crossplane conditions for this resource.
                 items:
