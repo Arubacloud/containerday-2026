@@ -982,6 +982,22 @@ spec:
               fmt: "%s-project"
         - type: FromCompositeFieldPath
           fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.network.vpcUriRefRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.network.subnetUriRefRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-subnet"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
           toFieldPath: spec.forProvider.network.elasticIpUriRefRef.name
           transforms:
           - type: string
