@@ -40,6 +40,17 @@ spec:
                     - mysql
                 required:
                 - engine
+              writeConnectionSecretToRef:
+                description: Writes database connection details (host, port, database, username, password, endpoint) to this Secret once the Microservice is Ready.
+                type: object
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                required:
+                - name
+                - namespace
             required:
             - image
             - database
