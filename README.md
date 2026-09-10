@@ -409,6 +409,85 @@ The function reconciles every ~60 seconds. If you manually remove or stop the co
 
 ---
 
+## Microservice usage
+
+### Deploy a microservice with MySQL
+
+```bash
+kubectl apply -f examples/microservice/app.yaml
+```
+
+Watch progress (VM + DBaaS cluster both need to provision — allow 10–15 minutes):
+
+```bash
+kubectl get microservice my-svc -w
+```
+
+Events during reconciliation:
+
+```
+Waiting for Cloudserver "cloudserver" to be provisioned
+Waiting for Cloudserver to become ready
+Waiting for DBaaS Elastic IP "dbaas-eip" to be provisioned
+Waiting for DBaaS Elastic IP address to be assigned
+Application "adminer:4.8.1" deployed successfully as container "application"
+```
+
+Once `READY=True`, check connection details:
+
+```bash
+kubectl get microservice my-svc -o jsonpath='{.status}' | jq .
+# {
+#   "endpoint":     "http://<vm-ip>:8080",
+#   "databaseHost": "<dbaas-ip>",
+#   "databasePort": "3306",
+#   "databaseName": "app",
+#   "databaseUser": "appuser"
+# }
+```
+
+Read the password from the connection secret:
+
+```bash
+kubectl get secret my-svc-db-conn -n default \
+  -o jsonpath='{.data.password}' | base64 -d
+
+# Full MySQL DSN:
+kubectl get secret my-svc-db-conn -n default \
+  -o jsonpath='{.data.endpoint}' | base64 -d
+```
+
+Open adminer in the browser at `http://<status.endpoint>`. The MySQL server field is pre-filled via `ADMINER_DEFAULT_SERVER`. Log in with:
+
+| Field    | Value                               |
+|----------|-------------------------------------|
+| Server   | `<status.databaseHost>` (pre-filled) |
+| Username | `appuser`                           |
+| Password | from `my-svc-db-conn` secret        |
+| Database | `app`                               |
+
+### Change the image
+
+```bash
+kubectl patch microservice my-svc \
+  --type=merge -p '{"spec":{"image":"phpmyadmin:5.2","port":80}}'
+```
+
+The function detects the image mismatch on the next reconcile, removes the old container, and starts the new one with the same MySQL env vars.
+
+### Connection secret keys
+
+| Key        | Content                              |
+|------------|--------------------------------------|
+| `host`     | MySQL public IP                      |
+| `port`     | `3306`                               |
+| `database` | `app`                                |
+| `username` | `appuser`                            |
+| `password` | plain-text password                  |
+| `endpoint` | `mysql://<host>:3306/app` (full DSN) |
+
+---
+
 ## Composition Function: function-appenv-deployer
 
 Source: `functions/appenv-deployer/`  
