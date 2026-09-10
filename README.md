@@ -235,8 +235,18 @@ kubectl patch configuration containerday-2026 \
 
 **Uninstall:**
 
+Crossplane does not cascade-delete providers and functions when a Configuration is removed — they are independent objects that could be shared. Delete them explicitly after removing the Configuration:
+
 ```bash
 kubectl delete configuration containerday-2026
+
+kubectl delete provider arubacloud-provider-arubacloud
+
+kubectl delete function \
+  crossplane-contrib-function-patch-and-transform \
+  crossplane-contrib-function-extra-resources \
+  crossplane-contrib-function-auto-ready \
+  arubacloud-containerday-2026appenv-deployer
 ```
 
 ---
