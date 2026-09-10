@@ -135,13 +135,13 @@ kubectl wait provider/arubacloud-provider-arubacloud \
   --for=condition=Healthy --timeout=5m
 ```
 
-**Step 3 — Create ArubaCloud credentials and ClusterProviderConfig**
+**Step 3 — Create ArubaCloud credentials and ProviderConfig**
 
-The `ClusterProviderConfig` CRD now exists. Create the credentials secret and the config:
+The `ProviderConfig` CRD now exists. The ArubaCloud provider looks for its credentials secret in the **same namespace as the `ProviderConfig` object** (`default`), regardless of `secretRef.namespace`. Create both in `default`:
 
 ```bash
 kubectl create secret generic arubacloud-credentials \
-  --namespace crossplane-system \
+  --namespace default \
   --from-literal=credentials='{
     "client_id":     "YOUR_CLIENT_ID",
     "client_secret": "YOUR_CLIENT_SECRET",
@@ -153,12 +153,13 @@ apiVersion: arubacloud.crossplane.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: default
+  namespace: default
 spec:
   credentials:
     source: Secret
     secretRef:
       name: arubacloud-credentials
-      namespace: crossplane-system
+      namespace: default
       key: credentials
 EOF
 ```
@@ -262,11 +263,13 @@ kubectl wait provider/arubacloud-provider-arubacloud \
   --for=condition=Healthy --timeout=5m
 ```
 
-**Step 2 — Create ArubaCloud credentials and ClusterProviderConfig:**
+**Step 2 — Create ArubaCloud credentials and ProviderConfig:**
+
+The ArubaCloud provider looks for its credentials secret in the same namespace as the `ProviderConfig` object (`default`). Create both there:
 
 ```bash
 kubectl create secret generic arubacloud-credentials \
-  --namespace crossplane-system \
+  --namespace default \
   --from-literal=credentials='{
     "client_id":     "YOUR_CLIENT_ID",
     "client_secret": "YOUR_CLIENT_SECRET",
@@ -278,12 +281,13 @@ apiVersion: arubacloud.crossplane.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: default
+  namespace: default
 spec:
   credentials:
     source: Secret
     secretRef:
       name: arubacloud-credentials
-      namespace: crossplane-system
+      namespace: default
       key: credentials
 EOF
 ```
