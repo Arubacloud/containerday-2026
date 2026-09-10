@@ -85,7 +85,23 @@ All resource names are derived from the `ApplicationEnvironment` name — multip
 
 ## Prerequisites
 
-Only one thing is needed before you start: **Crossplane v2.4+** installed and running.
+**Crossplane v2.4+** must be installed and running before anything below. If you do not have it yet, install it via Helm:
+
+```bash
+helm repo add crossplane-stable https://charts.crossplane.io/stable
+helm repo update
+
+helm install crossplane \
+  crossplane-stable/crossplane \
+  --namespace crossplane-system \
+  --create-namespace \
+  --version 2.4.0
+
+kubectl wait deployment/crossplane \
+  --namespace crossplane-system \
+  --for=condition=Available --timeout=5m
+```
+
 Everything else (provider, functions, XRD, Composition) is installed as part of the steps below.
 
 ---
@@ -96,7 +112,7 @@ Everything else (provider, functions, XRD, Composition) is installed as part of 
 
 **Step 1 — Install the Configuration**
 
-This installs the provider, all functions, the XRD and the Composition in one shot:
+A Crossplane `Configuration` is a bundle — applying it tells Crossplane to download and install the ArubaCloud provider, all composition functions, the XRD, and the Composition. The provider installation is what registers the `arubacloud.crossplane.io` CRDs; nothing else in these steps will work until the provider is healthy.
 
 ```bash
 kubectl apply -f - <<'EOF'
@@ -111,7 +127,8 @@ EOF
 
 **Step 2 — Wait for the provider to become Healthy**
 
-The provider installs the ArubaCloud CRDs. You must wait for it before the next step:
+> **Do not proceed to Step 3 until this command exits successfully.**
+> The provider registers the `arubacloud.crossplane.io/v1beta1` CRDs (including `ClusterProviderConfig`). Applying Step 3 before this completes will fail with `no matches for kind "ClusterProviderConfig"`.
 
 ```bash
 kubectl wait provider/arubacloud-provider-arubacloud \
@@ -120,7 +137,7 @@ kubectl wait provider/arubacloud-provider-arubacloud \
 
 **Step 3 — Create ArubaCloud credentials and ClusterProviderConfig**
 
-Now that the provider CRDs exist, create the credentials secret and the `ClusterProviderConfig`:
+The `ClusterProviderConfig` CRD now exists. Create the credentials secret and the config:
 
 ```bash
 kubectl create secret generic arubacloud-credentials \
@@ -228,6 +245,8 @@ kubectl delete configuration containerday-2026
 Use this if you need to pin versions independently or the cluster already has some packages installed.
 
 **Step 1 — Install the provider and wait for its CRDs:**
+
+> **The `kubectl wait` at the end of this block is mandatory before Step 2.** The provider registers the `arubacloud.crossplane.io/v1beta1` CRDs (including `ClusterProviderConfig`). Do not run Step 2 until the wait exits successfully.
 
 ```bash
 kubectl apply -f - <<'EOF'
