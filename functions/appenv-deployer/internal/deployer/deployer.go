@@ -4,6 +4,7 @@ package deployer
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -25,6 +26,10 @@ type DeployOptions struct {
 	PrivateKeyPEM []byte
 	Image         string
 	ContainerName string
+	// EnvVars are injected as -e KEY=VALUE flags in docker run.
+	// Values are shell-quoted so they may contain spaces and special characters.
+	// Env var changes do not trigger container recreation; only image changes do.
+	EnvVars map[string]string
 }
 
 // SSHDeployer is the real deployer that connects over SSH.
@@ -54,7 +59,7 @@ func (d *SSHDeployer) Deploy(ctx context.Context, opts DeployOptions) error {
 		return fmt.Errorf("ensure docker: %w", err)
 	}
 
-	if err := reconcileContainer(ctx, client, opts.Image, opts.ContainerName, d.CmdTimeout); err != nil {
+	if err := reconcileContainer(ctx, client, opts.Image, opts.ContainerName, opts.EnvVars, d.CmdTimeout); err != nil {
 		return fmt.Errorf("reconcile container: %w", err)
 	}
 
@@ -103,7 +108,9 @@ func startDocker(ctx context.Context, c internalssh.Client, timeout time.Duratio
 }
 
 // reconcileContainer converges the Docker container state toward the desired image.
-func reconcileContainer(ctx context.Context, c internalssh.Client, image, containerName string, timeout time.Duration) error {
+// envVars are injected only when creating the container; existing containers are not
+// recreated purely due to env var changes (only image or network mode changes trigger recreation).
+func reconcileContainer(ctx context.Context, c internalssh.Client, image, containerName string, envVars map[string]string, timeout time.Duration) error {
 	// Check current container state.
 	inspectCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -144,7 +151,10 @@ func reconcileContainer(ctx context.Context, c internalssh.Client, image, contai
 
 	// --network host exposes all container ports directly on the VM's public IP,
 	// making the application reachable without explicit port mapping.
-	runCmd := fmt.Sprintf("sudo docker run -d --name %s --restart unless-stopped --network host %s", containerName, image)
+	runCmd := fmt.Sprintf(
+		"sudo docker run -d --name %s --restart unless-stopped --network host%s %s",
+		containerName, buildEnvFlags(envVars), image,
+	)
 	if _, err := c.Run(runCtx, runCmd); err != nil {
 		return fmt.Errorf("docker run %s: %w", image, err)
 	}
@@ -177,4 +187,31 @@ func inspectContainer(ctx context.Context, c internalssh.Client, containerName s
 	running = strings.TrimSpace(parts[1]) == "true"
 	hostNetwork = strings.TrimSpace(parts[2]) == "host"
 	return currentImage, running, hostNetwork, true, nil
+}
+
+// buildEnvFlags builds a string of " -e KEY='value'" flags from envVars.
+// Keys are sorted for deterministic output. Values are single-quote escaped.
+func buildEnvFlags(envVars map[string]string) string {
+	if len(envVars) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(envVars))
+	for k := range envVars {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var b strings.Builder
+	for _, k := range keys {
+		b.WriteString(" -e ")
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(shellQuote(envVars[k]))
+	}
+	return b.String()
+}
+
+// shellQuote wraps s in single quotes, escaping any embedded single quotes.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }

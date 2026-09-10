@@ -1,0 +1,13 @@
+apiVersion: platform.example.com/v1alpha1
+kind: Microservice
+metadata:
+  name: my-svc
+  namespace: default
+spec:
+  # adminer is a lightweight MySQL web admin UI.
+  # Once Ready=True, open http://<status.endpoint> in your browser.
+  # Log in with: server=<auto-filled>, user=appuser, password=<from app-db-password secret>, database=app
+  image: adminer:4.8.1
+  port: 8080
+  database:
+    engine: mysql

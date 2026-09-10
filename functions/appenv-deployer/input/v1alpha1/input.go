@@ -7,7 +7,7 @@ import (
 
 // DeployerInput configures the appenv-deployer function.
 // This is implementation-level configuration set by the platform team in the
-// Composition and is never exposed to ApplicationEnvironment users.
+// Composition and is never exposed to ApplicationEnvironment or Microservice users.
 //
 // +kubebuilder:object:root=true
 type DeployerInput struct {
@@ -38,6 +38,11 @@ type DeployerInputSpec struct {
 	// ContainerName is the Docker container name used on the VM.
 	// +kubebuilder:default=application
 	ContainerName string `json:"containerName,omitempty"`
+
+	// Database configures optional managed MySQL connectivity.
+	// When set, the function waits for the DBaaS Elastic IP to be ready and
+	// injects MySQL connection env vars into the container.
+	Database *DatabaseConfig `json:"database,omitempty"`
 }
 
 // SSHSecretRef identifies a Kubernetes Secret and key within it.
@@ -49,4 +54,35 @@ type SSHSecretRef struct {
 	// Key within the Secret data that holds the PEM-encoded private key.
 	// +kubebuilder:default=privateKey
 	Key string `json:"key,omitempty"`
+}
+
+// DatabaseConfig configures managed MySQL connectivity for the deployed container.
+// The function injects standard MySQL env vars (MYSQL_HOST, MYSQL_PORT,
+// MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD) plus common aliases so that
+// most MySQL-aware images work without per-image configuration.
+type DatabaseConfig struct {
+	// DbaasEIPResourceName is the composition resource name of the Elasticip
+	// attached to the DBaaS cluster. The function reads status.atProvider.address
+	// from this resource to obtain the MySQL host.
+	// +kubebuilder:default=dbaas-eip
+	DbaasEIPResourceName string `json:"dbaasEIPResourceName,omitempty"`
+
+	// Port is the MySQL TCP port. Defaults to 3306.
+	// +kubebuilder:default=3306
+	Port int `json:"port,omitempty"`
+
+	// DatabaseName is the logical database name passed as MYSQL_DATABASE.
+	DatabaseName string `json:"databaseName"`
+
+	// Username is the MySQL username passed as MYSQL_USER.
+	Username string `json:"username"`
+
+	// PasswordContextKey is the key in the function-extra-resources pipeline
+	// context that holds the password Secret. Defaults to "db-password-secret".
+	// +kubebuilder:default=db-password-secret
+	PasswordContextKey string `json:"passwordContextKey,omitempty"`
+
+	// PasswordSecretKey is the key within the Secret data holding the password.
+	// +kubebuilder:default=password
+	PasswordSecretKey string `json:"passwordSecretKey,omitempty"`
 }

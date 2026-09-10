@@ -1,0 +1,79 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: microservices.platform.example.com
+spec:
+  group: platform.example.com
+  names:
+    categories:
+    - crossplane
+    kind: Microservice
+    plural: microservices
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        description: Microservice provisions a VM, a managed MySQL database, and deploys a Docker image configured with database connection env vars.
+        properties:
+          spec:
+            description: MicroserviceSpec defines the desired state of a Microservice.
+            properties:
+              image:
+                description: Docker image to deploy on the provisioned VM (e.g. adminer:4.8.1).
+                type: string
+              port:
+                description: TCP port the container listens on. Used to build the status endpoint and open the security group. Defaults to 8080.
+                type: integer
+                default: 8080
+                minimum: 1
+                maximum: 65535
+              database:
+                description: Database configures the managed database attached to this Microservice.
+                type: object
+                properties:
+                  engine:
+                    description: Database engine. Only "mysql" is supported.
+                    type: string
+                    enum:
+                    - mysql
+                required:
+                - engine
+            required:
+            - image
+            - database
+            type: object
+          status:
+            description: MicroserviceStatus defines the observed state of a Microservice.
+            properties:
+              endpoint:
+                description: HTTP endpoint to reach the deployed application once Ready=True.
+                type: string
+              conditions:
+                description: Crossplane conditions for this resource.
+                items:
+                  properties:
+                    lastTransitionTime:
+                      format: date-time
+                      type: string
+                    message:
+                      type: string
+                    reason:
+                      type: string
+                    status:
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+            type: object
+        required:
+        - spec
+        type: object
+    served: true

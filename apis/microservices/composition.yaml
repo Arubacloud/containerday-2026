@@ -1,0 +1,1192 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: microservices.platform.example.com
+spec:
+  compositeTypeRef:
+    apiVersion: platform.example.com/v1alpha1
+    kind: Microservice
+  mode: Pipeline
+  pipeline:
+
+  # Step 1 – Provision all ArubaCloud infrastructure (VM + DBaaS).
+  - step: provision-infrastructure
+    functionRef:
+      name: crossplane-contrib-function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+
+      # ── ArubaCloud Project ──────────────────────────────────────────────────
+      - name: project
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Project
+          spec:
+            forProvider:
+              description: "Microservice managed project"
+              tags:
+                - xplnln
+                - msvc
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+
+      # ── VPC ─────────────────────────────────────────────────────────────────
+      - name: vpc
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: VPC
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              tags:
+                - xpln
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+
+      # ── Subnet ──────────────────────────────────────────────────────────────
+      - name: subnet
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Subnet
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              type: Basic
+              tags:
+                - xpln
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-subnet"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-subnet"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.vpcIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+
+      # ── Security Group (VM) ──────────────────────────────────────────────────
+      - name: security-group
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Securitygroup
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              tags:
+                - xpln
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-sg"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-sg"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.vpcIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+
+      # ── Security Rules (VM) ─────────────────────────────────────────────────
+      - name: rule-ssh
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Securityrule
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              properties:
+                direction: Ingress
+                protocol: TCP
+                port: "22"
+                target:
+                  kind: Ip
+                  value: "0.0.0.0/0"
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-rule-ssh"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-rule-ssh"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.vpcIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.securityGroupIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-sg"
+
+      - name: rule-http
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Securityrule
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              properties:
+                direction: Ingress
+                protocol: TCP
+                port: "80"
+                target:
+                  kind: Ip
+                  value: "0.0.0.0/0"
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-rule-http"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-rule-http"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.vpcIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.securityGroupIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-sg"
+
+      - name: rule-app
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Securityrule
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              properties:
+                direction: Ingress
+                protocol: TCP
+                port: "8080"
+                target:
+                  kind: Ip
+                  value: "0.0.0.0/0"
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-rule-app"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-rule-app"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.vpcIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.securityGroupIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-sg"
+
+      - name: rule-egress
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Securityrule
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              properties:
+                direction: Egress
+                protocol: ANY
+                port: "*"
+                target:
+                  kind: Ip
+                  value: "0.0.0.0/0"
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-rule-egress"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-rule-egress"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.vpcIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.securityGroupIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-sg"
+
+      - name: rule-icmp
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Securityrule
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              properties:
+                direction: Ingress
+                protocol: ICMP
+                port: "*"
+                target:
+                  kind: Ip
+                  value: "0.0.0.0/0"
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-rule-icmp"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-rule-icmp"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.vpcIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.securityGroupIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-sg"
+
+      # ── Elastic IP (VM) ─────────────────────────────────────────────────────
+      - name: elastic-ip
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Elasticip
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              billingPeriod: Hour
+              tags:
+                - xpln
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-eip"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-eip"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-eip-address"
+
+      # ── Boot Volume ─────────────────────────────────────────────────────────
+      - name: boot-volume
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Blockstorage
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              sizeGb: 100
+              billingPeriod: Hour
+              zone: ITBG-1
+              type: Performance
+              bootable: true
+              image: LU22-001
+              tags:
+                - xpln
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-boot-vol"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-boot-vol"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+
+      # ── Keypair ─────────────────────────────────────────────────────────────
+      - name: keypair
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Keypair
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              tags:
+                - xpln
+              valueSecretRef:
+                name: app-ssh-pubkey
+                key: value
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-keypair"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-keypair"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+
+      # ── Cloudserver ─────────────────────────────────────────────────────────
+      - name: cloudserver
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Cloudserver
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              zone: ITBG-1
+              tags:
+                - xplnln
+                - msvc
+              network:
+                subnetUriRefsRefs:
+                  - name: placeholder
+                securitygroupUriRefsRefs:
+                  - name: placeholder
+              settings:
+                flavorName: CSO4A8
+              storage: {}
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-server"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-server"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.network.vpcUriRefRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.network.subnetUriRefsRefs[0].name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-subnet"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.network.securitygroupUriRefsRefs[0].name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-sg"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.network.elasticIpUriRefRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-eip"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.settings.keyPairUriRefRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-keypair"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.storage.bootVolumeUriRefRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-boot-vol"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-server-connection"
+
+      # ── DBaaS Security Group ─────────────────────────────────────────────────
+      - name: dbaas-sg
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Securitygroup
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              tags:
+                - xpln
+                - msvc-db
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas-sg"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas-sg"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.vpcIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+
+      # ── DBaaS Security Rules ─────────────────────────────────────────────────
+      - name: dbaas-rule-mysql
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Securityrule
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              properties:
+                direction: Ingress
+                protocol: TCP
+                port: "3306"
+                target:
+                  kind: Ip
+                  value: "0.0.0.0/0"
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas-rule-mysql"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas-rule-mysql"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.vpcIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.securityGroupIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas-sg"
+
+      - name: dbaas-rule-egress
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Securityrule
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              properties:
+                direction: Egress
+                protocol: ANY
+                port: "*"
+                target:
+                  kind: Ip
+                  value: "0.0.0.0/0"
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas-rule-egress"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas-rule-egress"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.vpcIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-vpc"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.securityGroupIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas-sg"
+
+      # ── DBaaS Elastic IP ────────────────────────────────────────────────────
+      # The function reads status.atProvider.address from this resource to obtain
+      # the MySQL host and injects it as MYSQL_HOST / ADMINER_DEFAULT_SERVER env vars.
+      - name: dbaas-eip
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Elasticip
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              billingPeriod: Hour
+              tags:
+                - xpln
+                - msvc-db
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas-eip"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas-eip"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas-eip-address"
+
+      # ── DBaaS Cluster ───────────────────────────────────────────────────────
+      # NOTE: engineId and flavor must match values supported by the ArubaCloud
+      # DBaaS API. Verify valid values from the ArubaCloud console or provider docs:
+      # https://marketplace.upbound.io/providers/arubacloud/provider-arubacloud/v0.0.9
+      - name: dbaas
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Dbaas
+          spec:
+            forProvider:
+              location: ITBG-Bergamo
+              engineId: MYSQL_8_0
+              flavor: DB-S-2VCPU-4GB
+              billingPeriod: Hour
+              storage:
+                sizeGb: 20
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.network.elasticIpUriRefRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas-eip"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.network.securityGroupUriRefRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas-sg"
+
+      # ── Database (logical) ──────────────────────────────────────────────────
+      - name: db
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Database
+          spec:
+            forProvider:
+              name: app
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-db"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.dbaasIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+
+      # ── Database User ───────────────────────────────────────────────────────
+      # passwordSecretRef reads app-db-password from the default namespace
+      # (same namespace as this MR). Create it before applying the Microservice:
+      #   kubectl create secret generic app-db-password \
+      #     --namespace default --from-literal=password=<your-password>
+      - name: dbuser
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Dbaasuser
+          spec:
+            forProvider:
+              username: appuser
+              passwordSecretRef:
+                name: app-db-password
+                key: password
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbuser"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.dbaasIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+
+      # ── Database Grant ──────────────────────────────────────────────────────
+      - name: dbgrant
+        base:
+          apiVersion: arubacloud.crossplane.io/v1alpha1
+          kind: Databasegrant
+          spec:
+            forProvider:
+              role: ALL
+            providerConfigRef:
+              kind: ProviderConfig
+              name: default
+        patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: metadata.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbgrant"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.dbaasIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbaas"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.databaseRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-db"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.userIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-dbuser"
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.forProvider.projectIdRef.name
+          transforms:
+          - type: string
+            string:
+              type: Format
+              fmt: "%s-project"
+
+  # Step 2 – Fetch platform secrets: SSH private key and DB password.
+  # function-extra-resources populates the pipeline context so the deployer
+  # function can read both secrets without RBAC reaching outside crossplane-system.
+  - step: fetch-secrets
+    functionRef:
+      name: crossplane-contrib-function-extra-resources
+    input:
+      apiVersion: extra-resources.fn.crossplane.io/v1beta1
+      kind: Input
+      spec:
+        extraResources:
+        - kind: Secret
+          into: ssh-secret
+          apiVersion: v1
+          type: Reference
+          namespace: default
+          ref:
+            name: app-ssh-privkey
+        - kind: Secret
+          into: db-password-secret
+          apiVersion: v1
+          type: Reference
+          namespace: default
+          ref:
+            name: app-db-password
+
+  # Step 3 – Deploy the Docker image via SSH, injecting MySQL connection env vars.
+  # The function waits for both the Cloudserver publicIp and the DBaaS EIP address
+  # before attempting deployment. It injects MYSQL_HOST, MYSQL_PORT, MYSQL_DATABASE,
+  # MYSQL_USER, MYSQL_PASSWORD (and common aliases) as container env vars.
+  - step: deploy-application
+    functionRef:
+      name: arubacloud-containerday-2026appenv-deployer
+    input:
+      apiVersion: appenv.platform.example.com/v1alpha1
+      kind: DeployerInput
+      spec:
+        cloudserverResourceName: cloudserver
+        sshSecretRef:
+          name: app-ssh-privkey
+          namespace: default
+          key: privateKey
+        sshUser: ubuntu
+        sshPort: 22
+        containerName: application
+        database:
+          dbaasEIPResourceName: dbaas-eip
+          port: 3306
+          databaseName: app
+          username: appuser
+          passwordContextKey: db-password-secret
+          passwordSecretKey: password
+
+  # Step 4 – Mark the XR ready only after all composed resources are ready.
+  - step: auto-ready
+    functionRef:
+      name: crossplane-contrib-function-auto-ready

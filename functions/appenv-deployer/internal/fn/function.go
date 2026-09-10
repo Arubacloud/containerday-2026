@@ -61,8 +61,6 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 	}
 
 	// If the XR is being deleted, skip SSH deployment entirely.
-	// Crossplane will garbage-collect the composed resources; there is nothing
-	// for this function to do and attempting SSH could cause confusing errors.
 	if dt, _, _ := unstructuredString(xr.Resource.Object, "metadata", "deletionTimestamp"); dt != "" {
 		log.Info("XR is being deleted, skipping deployment")
 		return rsp, nil
@@ -110,10 +108,7 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 
 	log.Info("Cloudserver ready", "publicIp", publicIP)
 
-	// --- Read SSH private key from the pipeline context populated by function-extra-resources ---
-	// function-extra-resources stores fetched resources in the pipeline context (not req.ExtraResources).
-	// On the first reconcile it exits early before populating the context, so we treat a missing
-	// secret as a transient/retryable condition rather than a fatal misconfiguration.
+	// --- Read SSH private key from pipeline context ---
 	privateKeyPEM, err := getSSHKeyFromContext(req, input.Spec.SSHSecretRef)
 	if err != nil {
 		log.Info("SSH secret not yet available in pipeline context, will retry", "error", err)
@@ -121,10 +116,7 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 		return rsp, nil
 	}
 
-	// --- Deploy the application ---
-	deployCtx, cancel := context.WithTimeout(ctx, deployTimeout)
-	defer cancel()
-
+	// --- Build deploy options ---
 	opts := deployer.DeployOptions{
 		Host:          publicIP,
 		Port:          input.Spec.SSHPort,
@@ -133,6 +125,19 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 		Image:         image,
 		ContainerName: input.Spec.ContainerName,
 	}
+
+	// --- If database is configured, wait for DBaaS EIP and inject env vars ---
+	if input.Spec.Database != nil {
+		envVars, ready := buildDatabaseEnvVars(req, input.Spec.Database, observed, rsp, log)
+		if !ready {
+			return rsp, nil
+		}
+		opts.EnvVars = envVars
+	}
+
+	// --- Deploy the application ---
+	deployCtx, cancel := context.WithTimeout(ctx, deployTimeout)
+	defer cancel()
 
 	if err := f.deployer.Deploy(deployCtx, opts); err != nil {
 		log.Info("Application deployment failed", "error", err)
@@ -153,6 +158,77 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 	}
 
 	return rsp, nil
+}
+
+// buildDatabaseEnvVars reads the DBaaS Elastic IP address and password from the
+// pipeline context, then returns the MySQL env vars to inject into the container.
+// Returns (nil, false) and sets the response when the DBaaS is not yet ready.
+func buildDatabaseEnvVars(
+	req *fnv1.RunFunctionRequest,
+	db *v1alpha1.DatabaseConfig,
+	observed map[resource.Name]resource.ObservedComposed,
+	rsp *fnv1.RunFunctionResponse,
+	log logging.Logger,
+) (map[string]string, bool) {
+	eipName := db.DbaasEIPResourceName
+	if eipName == "" {
+		eipName = "dbaas-eip"
+	}
+
+	eipRes, ok := observed[resource.Name(eipName)]
+	if !ok {
+		log.Info("DBaaS Elastic IP not yet observed", "resource", eipName)
+		response.Normalf(rsp, "Waiting for DBaaS Elastic IP %q to be provisioned", eipName)
+		return nil, false
+	}
+
+	dbaasHost, err := eipRes.Resource.GetString("status.atProvider.address")
+	if err != nil || dbaasHost == "" {
+		log.Info("DBaaS Elastic IP address not yet available")
+		response.Normalf(rsp, "Waiting for DBaaS Elastic IP address to be assigned")
+		return nil, false
+	}
+
+	contextKey := db.PasswordContextKey
+	if contextKey == "" {
+		contextKey = "db-password-secret"
+	}
+	secretKey := db.PasswordSecretKey
+	if secretKey == "" {
+		secretKey = "password"
+	}
+
+	password, err := getDatabasePassword(req, contextKey, secretKey)
+	if err != nil {
+		log.Info("DB password not yet available in pipeline context", "error", err)
+		response.Normalf(rsp, "Waiting for DB password: %s", sanitizeError(err))
+		return nil, false
+	}
+
+	port := db.Port
+	if port == 0 {
+		port = 3306
+	}
+	portStr := fmt.Sprintf("%d", port)
+
+	log.Info("DBaaS ready", "host", dbaasHost, "port", portStr, "database", db.DatabaseName)
+
+	// Inject a standard set of MySQL env vars plus well-known aliases so that
+	// most MySQL-aware images (adminer, phpmyadmin, wordpress, custom apps) work
+	// without per-image configuration in the Composition.
+	return map[string]string{
+		"MYSQL_HOST":              dbaasHost,
+		"MYSQL_PORT":              portStr,
+		"MYSQL_DATABASE":          db.DatabaseName,
+		"MYSQL_USER":              db.Username,
+		"MYSQL_PASSWORD":          password,
+		"DB_HOST":                 dbaasHost,
+		"DB_PORT":                 portStr,
+		"DB_NAME":                 db.DatabaseName,
+		"DB_USER":                 db.Username,
+		"DB_PASSWORD":             password,
+		"ADMINER_DEFAULT_SERVER":  dbaasHost,
+	}, true
 }
 
 // parseInput decodes the function input struct into DeployerInput.
@@ -227,79 +303,96 @@ func isCloudserverReady(obj map[string]interface{}) bool {
 	return false
 }
 
-// getSSHKeyFromContext reads the SSH private key from the pipeline context populated by
-// function-extra-resources. The context key is "apiextensions.crossplane.io/extra-resources"
-// and the structure is map[into][]unstructured.Unstructured serialised as JSON.
-//
-// Kubernetes Secret data values are base64-encoded strings in the API response, so we
-// decode them before returning.
-func getSSHKeyFromContext(req *fnv1.RunFunctionRequest, ref v1alpha1.SSHSecretRef) ([]byte, error) {
+// getSecretDataValue reads a base64-encoded value from a Secret stored in the
+// pipeline context by function-extra-resources.
+// contextKey is the "into" label used in the function-extra-resources input.
+// dataKey is the key within the Secret's data map.
+func getSecretDataValue(req *fnv1.RunFunctionRequest, contextKey, dataKey string) (string, error) {
 	ctx := req.GetContext()
 	if ctx == nil {
-		return nil, fmt.Errorf("pipeline context is empty; waiting for function-extra-resources to populate it")
+		return "", fmt.Errorf("pipeline context is empty; waiting for function-extra-resources")
 	}
 
 	ctxFields := ctx.GetFields()
 	extraVal, ok := ctxFields[extraResourcesContextKey]
 	if !ok {
-		return nil, fmt.Errorf("extra resources not yet in pipeline context")
+		return "", fmt.Errorf("extra resources not yet in pipeline context")
 	}
 
 	extraStruct := extraVal.GetStructValue()
 	if extraStruct == nil {
-		return nil, fmt.Errorf("extra resources context value is not a struct")
+		return "", fmt.Errorf("extra resources context value is not a struct")
 	}
 
-	secretListVal, ok := extraStruct.GetFields()["ssh-secret"]
+	secretListVal, ok := extraStruct.GetFields()[contextKey]
 	if !ok {
-		return nil, fmt.Errorf("'ssh-secret' key not found in extra resources context")
+		return "", fmt.Errorf("key %q not found in extra resources context", contextKey)
 	}
 
 	secretList := secretListVal.GetListValue()
 	if secretList == nil || len(secretList.GetValues()) == 0 {
-		return nil, fmt.Errorf("ssh-secret list is empty in extra resources context")
+		return "", fmt.Errorf("secret list for key %q is empty in extra resources context", contextKey)
 	}
 
 	secretStruct := secretList.GetValues()[0].GetStructValue()
 	if secretStruct == nil {
-		return nil, fmt.Errorf("ssh-secret first item is not a struct")
+		return "", fmt.Errorf("first item for key %q is not a struct", contextKey)
 	}
 
 	dataVal, ok := secretStruct.GetFields()["data"]
 	if !ok {
-		return nil, fmt.Errorf("ssh secret has no data field")
+		return "", fmt.Errorf("secret for key %q has no data field", contextKey)
 	}
 
 	dataStruct := dataVal.GetStructValue()
 	if dataStruct == nil {
-		return nil, fmt.Errorf("ssh secret data is not a struct")
+		return "", fmt.Errorf("secret data for key %q is not a struct", contextKey)
 	}
 
+	valField, ok := dataStruct.GetFields()[dataKey]
+	if !ok {
+		return "", fmt.Errorf("data key %q not found in secret %q", dataKey, contextKey)
+	}
+
+	encoded := valField.GetStringValue()
+	if encoded == "" {
+		return "", fmt.Errorf("data key %q in secret %q is empty", dataKey, contextKey)
+	}
+	return encoded, nil
+}
+
+// getSSHKeyFromContext reads the SSH private key from the pipeline context.
+func getSSHKeyFromContext(req *fnv1.RunFunctionRequest, ref v1alpha1.SSHSecretRef) ([]byte, error) {
 	key := ref.Key
 	if key == "" {
 		key = "privateKey"
 	}
-
-	keyVal, ok := dataStruct.GetFields()[key]
-	if !ok {
-		return nil, fmt.Errorf("key %q not found in SSH secret", key)
+	encoded, err := getSecretDataValue(req, "ssh-secret", key)
+	if err != nil {
+		return nil, err
 	}
-
-	// Kubernetes Secret data is base64-encoded in the API response.
-	encoded := keyVal.GetStringValue()
-	if encoded == "" {
-		return nil, fmt.Errorf("SSH private key value is empty")
-	}
-
 	pem, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return nil, fmt.Errorf("base64-decode SSH private key: %w", err)
 	}
-
 	return pem, nil
 }
 
-// unstructuredString walks a dot-separated path in an unstructured map and returns the string value.
+// getDatabasePassword reads and base64-decodes the DB password from the pipeline context.
+// The password value is never logged.
+func getDatabasePassword(req *fnv1.RunFunctionRequest, contextKey, secretKey string) (string, error) {
+	encoded, err := getSecretDataValue(req, contextKey, secretKey)
+	if err != nil {
+		return "", err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return "", fmt.Errorf("base64-decode DB password: %w", err)
+	}
+	return string(decoded), nil
+}
+
+// unstructuredString walks a path in an unstructured map and returns the string value.
 func unstructuredString(obj map[string]interface{}, path ...string) (string, bool, error) {
 	cur := obj
 	for _, key := range path[:len(path)-1] {

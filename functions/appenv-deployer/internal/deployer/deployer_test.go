@@ -145,7 +145,7 @@ func TestReconcileContainer_Create(t *testing.T) {
 		},
 	}
 
-	err := reconcileContainer(context.Background(), client, "nginx:latest", "application", 0)
+	err := reconcileContainer(context.Background(), client, "nginx:latest", "application", nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestReconcileContainer_AlreadyRunning(t *testing.T) {
 		},
 	}
 
-	err := reconcileContainer(context.Background(), client, "nginx:latest", "application", 0)
+	err := reconcileContainer(context.Background(), client, "nginx:latest", "application", nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestReconcileContainer_WrongImage(t *testing.T) {
 		},
 	}
 
-	err := reconcileContainer(context.Background(), client, "nginx:latest", "application", 0)
+	err := reconcileContainer(context.Background(), client, "nginx:latest", "application", nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestReconcileContainer_StoppedCorrectImage(t *testing.T) {
 		},
 	}
 
-	err := reconcileContainer(context.Background(), client, "nginx:latest", "application", 0)
+	err := reconcileContainer(context.Background(), client, "nginx:latest", "application", nil, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -247,9 +247,46 @@ func TestReconcileContainer_RunFailure(t *testing.T) {
 		},
 	}
 
-	err := reconcileContainer(context.Background(), client, "bad-image:nope", "application", 0)
+	err := reconcileContainer(context.Background(), client, "bad-image:nope", "application", nil, 0)
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+}
+
+// Test: EnvVars are included in docker run command
+func TestReconcileContainer_EnvVarsInRunCommand(t *testing.T) {
+	client := &mockClient{
+		responses: map[string]cmdResult{
+			"docker inspect": {out: "__not_found__"},
+			"docker run":     {out: "abc123"},
+		},
+	}
+
+	envVars := map[string]string{
+		"MYSQL_HOST":     "1.2.3.4",
+		"MYSQL_PASSWORD": "s3cr3t",
+	}
+
+	err := reconcileContainer(context.Background(), client, "adminer:4.8.1", "application", envVars, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var runCmd string
+	for _, c := range client.calls {
+		if strings.Contains(c, "docker run") {
+			runCmd = c
+			break
+		}
+	}
+	if runCmd == "" {
+		t.Fatal("expected docker run to be called")
+	}
+	if !strings.Contains(runCmd, "MYSQL_HOST") {
+		t.Errorf("expected MYSQL_HOST in docker run command, got: %q", runCmd)
+	}
+	if !strings.Contains(runCmd, "MYSQL_PASSWORD") {
+		t.Errorf("expected MYSQL_PASSWORD in docker run command, got: %q", runCmd)
 	}
 }
 
