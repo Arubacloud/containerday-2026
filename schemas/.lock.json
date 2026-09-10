@@ -1,7 +1,7 @@
 {
   "packages": {
     "xpkg://xpkg.crossplane.io/crossplane-contrib/function-auto-ready:v0.7.0": "sha256:989e7bb4704859cbd6475cc61255b4b4ad53483ea43f3d2d1e4be5e3ff678869",
-    "xpkg://xpkg.upbound.io/arubacloud/provider-arubacloud:v0.0.9": "sha256:463c10dcd877fe84dce83d404278ac026a337977f377c1f2b59cfa9dd9c907e8",
+    "xpkg://xpkg.upbound.io/arubacloud/provider-arubacloud:v0.0.10": "",
     "xpkg://xpkg.upbound.io/crossplane-contrib/function-extra-resources:v0.3.0": "sha256:d4d2be039701723e115bfc13b75acd37ff3c95f4999b563710dd99da5680e462",
     "xpkg://xpkg.upbound.io/crossplane-contrib/function-patch-and-transform:v0.10.9": "sha256:4d729ddc8ee1b8417a205163746a6d84b523c6c9b8827c5669b94fcf5027babf"
   }

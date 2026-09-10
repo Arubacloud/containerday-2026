@@ -266,7 +266,7 @@ kind: Provider
 metadata:
   name: arubacloud-provider-arubacloud
 spec:
-  package: xpkg.upbound.io/arubacloud/provider-arubacloud:v0.0.9
+  package: xpkg.upbound.io/arubacloud/provider-arubacloud:v0.0.10
 EOF
 
 kubectl wait provider/arubacloud-provider-arubacloud \
