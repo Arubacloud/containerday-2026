@@ -939,9 +939,6 @@ spec:
               fmt: "%s-dbaas-eip-address"
 
       # ── DBaaS Cluster ───────────────────────────────────────────────────────
-      # NOTE: engineId and flavor must match values supported by the ArubaCloud
-      # DBaaS API. Verify valid values from the ArubaCloud console or provider docs:
-      # https://marketplace.upbound.io/providers/arubacloud/provider-arubacloud/v0.0.9
       - name: dbaas
         base:
           apiVersion: arubacloud.crossplane.io/v1alpha1
@@ -949,8 +946,8 @@ spec:
           spec:
             forProvider:
               location: ITBG-Bergamo
-              engineId: MYSQL_8_0
-              flavor: DB-S-2VCPU-4GB
+              engineId: mysql-8.0
+              flavor: DBO2A4
               billingPeriod: Hour
               storage:
                 sizeGb: 20
