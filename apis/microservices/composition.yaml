@@ -946,6 +946,7 @@ spec:
           spec:
             forProvider:
               location: ITBG-Bergamo
+              zone: ITBG-1
               engineId: mysql-8.0
               flavor: DBO2A4
               billingPeriod: Hour
