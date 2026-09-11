@@ -135,6 +135,24 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 		opts.EnvVars = envVars
 	}
 
+	// --- Short-circuit: skip SSH if already deployed with the correct image ---
+	// On every reconcile Crossplane calls the function, which would SSH into the
+	// VM each time. Once the container is running this is wasted work and risks
+	// hitting Crossplane's function deadline. If the observed XR already records
+	// the correct endpoint and deployedImage, re-use those values and return
+	// immediately without opening an SSH connection.
+	expectedEndpoint := fmt.Sprintf("http://%s:%d", publicIP, appPort)
+	observedEndpoint, _ := xr.Resource.GetString("status.endpoint")
+	observedDeployedImage, _ := xr.Resource.GetString("status.deployedImage")
+	if observedEndpoint == expectedEndpoint && observedDeployedImage == image {
+		log.Info("Container already deployed, skipping SSH", "image", image)
+		response.Normalf(rsp, "Application %q already running as container %q", image, input.Spec.ContainerName)
+		if err := writeStatus(req, rsp, expectedEndpoint, image, opts.EnvVars); err != nil {
+			log.Info("Failed to write status", "error", err)
+		}
+		return rsp, nil
+	}
+
 	// --- Deploy the application ---
 	deployCtx, cancel := context.WithTimeout(ctx, deployTimeout)
 	defer cancel()
@@ -148,36 +166,8 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 	log.Info("Application deployed successfully", "image", image, "container", input.Spec.ContainerName)
 	response.Normalf(rsp, "Application %q deployed successfully as container %q", image, input.Spec.ContainerName)
 
-	// Write runtime values into XR status and connection secret.
-	dxr, err := request.GetDesiredCompositeResource(req)
-	if err == nil {
-		_ = dxr.Resource.SetString("status.endpoint", fmt.Sprintf("http://%s:%d", publicIP, appPort))
-
-		if opts.EnvVars != nil {
-			// Non-sensitive connection details go into status for easy discoverability.
-			_ = dxr.Resource.SetString("status.databaseHost", opts.EnvVars["MYSQL_HOST"])
-			_ = dxr.Resource.SetString("status.databasePort", opts.EnvVars["MYSQL_PORT"])
-			_ = dxr.Resource.SetString("status.databaseName", opts.EnvVars["MYSQL_DATABASE"])
-			_ = dxr.Resource.SetString("status.databaseUser", opts.EnvVars["MYSQL_USER"])
-
-			// Password and full DSN go into the connection secret (writeConnectionSecretToRef).
-			// Crossplane's XR controller writes these to the Secret named by the user;
-			// they never appear in the XR status or in any log line.
-			dxr.ConnectionDetails = resource.ConnectionDetails{
-				"username": []byte(opts.EnvVars["MYSQL_USER"]),
-				"password": []byte(opts.EnvVars["MYSQL_PASSWORD"]),
-				"host":     []byte(opts.EnvVars["MYSQL_HOST"]),
-				"port":     []byte(opts.EnvVars["MYSQL_PORT"]),
-				"database": []byte(opts.EnvVars["MYSQL_DATABASE"]),
-				"endpoint": []byte(fmt.Sprintf("mysql://%s:%s/%s",
-					opts.EnvVars["MYSQL_HOST"],
-					opts.EnvVars["MYSQL_PORT"],
-					opts.EnvVars["MYSQL_DATABASE"],
-				)),
-			}
-		}
-
-		_ = response.SetDesiredCompositeResource(rsp, dxr)
+	if err := writeStatus(req, rsp, expectedEndpoint, image, opts.EnvVars); err != nil {
+		log.Info("Failed to write status", "error", err)
 	}
 
 	return rsp, nil
@@ -458,6 +448,41 @@ func unstructuredString(obj map[string]interface{}, path ...string) (string, boo
 		return "", false, nil
 	}
 	return s, true, nil
+}
+
+// writeStatus writes endpoint, deployedImage, optional DB fields, and connection
+// details to the desired XR. Extracted so both the short-circuit path and the
+// post-deploy path use identical logic.
+func writeStatus(req *fnv1.RunFunctionRequest, rsp *fnv1.RunFunctionResponse, endpoint, deployedImage string, envVars map[string]string) error {
+	dxr, err := request.GetDesiredCompositeResource(req)
+	if err != nil {
+		return err
+	}
+
+	_ = dxr.Resource.SetString("status.endpoint", endpoint)
+	_ = dxr.Resource.SetString("status.deployedImage", deployedImage)
+
+	if envVars != nil {
+		_ = dxr.Resource.SetString("status.databaseHost", envVars["MYSQL_HOST"])
+		_ = dxr.Resource.SetString("status.databasePort", envVars["MYSQL_PORT"])
+		_ = dxr.Resource.SetString("status.databaseName", envVars["MYSQL_DATABASE"])
+		_ = dxr.Resource.SetString("status.databaseUser", envVars["MYSQL_USER"])
+
+		dxr.ConnectionDetails = resource.ConnectionDetails{
+			"username": []byte(envVars["MYSQL_USER"]),
+			"password": []byte(envVars["MYSQL_PASSWORD"]),
+			"host":     []byte(envVars["MYSQL_HOST"]),
+			"port":     []byte(envVars["MYSQL_PORT"]),
+			"database": []byte(envVars["MYSQL_DATABASE"]),
+			"endpoint": []byte(fmt.Sprintf("mysql://%s:%s/%s",
+				envVars["MYSQL_HOST"],
+				envVars["MYSQL_PORT"],
+				envVars["MYSQL_DATABASE"],
+			)),
+		}
+	}
+
+	return response.SetDesiredCompositeResource(rsp, dxr)
 }
 
 // sanitizeError strips any path/credential noise from an error message.

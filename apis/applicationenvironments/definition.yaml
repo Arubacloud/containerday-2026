@@ -38,6 +38,9 @@ spec:
               endpoint:
                 description: HTTP endpoint to reach the deployed application.
                 type: string
+              deployedImage:
+                description: Docker image that was last successfully deployed. Used to short-circuit SSH on reconciles when nothing has changed.
+                type: string
               conditions:
                 description: Crossplane conditions for this resource.
                 items:

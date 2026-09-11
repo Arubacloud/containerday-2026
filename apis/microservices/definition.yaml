@@ -61,6 +61,9 @@ spec:
               endpoint:
                 description: HTTP endpoint to reach the deployed application once Ready=True.
                 type: string
+              deployedImage:
+                description: Docker image that was last successfully deployed. Used to short-circuit SSH on reconciles when nothing has changed.
+                type: string
               databaseHost:
                 description: MySQL host (public IP of the DBaaS Elastic IP).
                 type: string
