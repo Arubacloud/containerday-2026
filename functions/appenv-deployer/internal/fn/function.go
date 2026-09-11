@@ -158,8 +158,8 @@ func (f *Function) RunFunction(ctx context.Context, req *fnv1.RunFunctionRequest
 	defer cancel()
 
 	if err := f.deployer.Deploy(deployCtx, opts); err != nil {
-		log.Info("Application deployment failed", "error", err)
-		response.Normalf(rsp, "Application deployment failed: %s", sanitizeError(err))
+		log.Info("Deploy pending or failed", "reason", sanitizeError(err))
+		response.Normalf(rsp, sanitizeError(err))
 		return rsp, nil
 	}
 

@@ -97,42 +97,70 @@ func TestDeploy_DockerAlreadyInstalled(t *testing.T) {
 	}
 }
 
-// Test 5: Docker missing — installation is triggered
+// Test 5: Docker missing — background installation is triggered and a retryable
+// error is returned so the function can complete within Crossplane's deadline.
 func TestDeploy_DockerMissing(t *testing.T) {
-	installCalled := false
+	bgInstallCalled := false
 	client := &mockClient{
 		responses: map[string]cmdResult{
-			"command -v docker": {out: "", err: errors.New("not found")},
-			"get-docker.sh":     {out: ""},
-			"systemctl":         {out: ""},
-			"docker inspect":    {out: "__not_found__"},
-			"docker run":        {out: "containerid"},
+			"command -v docker":          {out: "", err: errors.New("not found")},
+			"test -f /tmp/docker-installing": {out: "not-started"},
 		},
 	}
 
-	origRun := client.Run
-	_ = origRun
-
-	// Override Run to track install call.
 	trackClient := &trackingClient{
 		inner: client,
 		onRun: func(cmd string) {
 			if strings.Contains(cmd, "get-docker.sh") {
-				installCalled = true
+				bgInstallCalled = true
 			}
 		},
 	}
 
 	d := newDeployer(trackClient, nil)
-	if err := d.Deploy(context.Background(), DeployOptions{
+	err := d.Deploy(context.Background(), DeployOptions{
 		Image:         "nginx:latest",
 		ContainerName: "application",
-	}); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	})
+
+	// Non-blocking install returns a retryable error — not a fatal failure.
+	if err == nil {
+		t.Fatal("expected retryable error when Docker is not yet installed, got nil")
+	}
+	if !strings.Contains(err.Error(), "background") {
+		t.Errorf("expected background install message, got: %v", err)
+	}
+	if !bgInstallCalled {
+		t.Error("expected background Docker install script to be triggered")
+	}
+}
+
+// Test 5b: Docker install already in progress — returns retryable error without starting another install.
+func TestDeploy_DockerInstallInProgress(t *testing.T) {
+	client := &mockClient{
+		responses: map[string]cmdResult{
+			"command -v docker":              {out: "", err: errors.New("not found")},
+			"test -f /tmp/docker-installing": {out: "installing"},
+		},
 	}
 
-	if !installCalled {
-		t.Error("expected Docker install to be called")
+	d := newDeployer(client, nil)
+	err := d.Deploy(context.Background(), DeployOptions{
+		Image:         "nginx:latest",
+		ContainerName: "application",
+	})
+
+	if err == nil {
+		t.Fatal("expected retryable error while install is in progress")
+	}
+	if !strings.Contains(err.Error(), "in progress") {
+		t.Errorf("expected 'in progress' message, got: %v", err)
+	}
+	// Verify no second install was triggered.
+	for _, c := range client.calls {
+		if strings.Contains(c, "get-docker.sh") {
+			t.Error("should not trigger a second install when one is already running")
+		}
 	}
 }
 

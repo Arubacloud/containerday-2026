@@ -67,32 +67,47 @@ func (d *SSHDeployer) Deploy(ctx context.Context, opts DeployOptions) error {
 }
 
 // ensureDocker checks whether Docker is installed and installs it if not.
+//
+// Installation is non-blocking: the install script is launched with nohup in
+// the background and the function returns immediately with a retryable error.
+// This prevents Crossplane's function deadline from firing during the 1-2 minute
+// install. On the next reconcile the flag file /tmp/docker-installing is checked
+// and, once gone, Docker is verified and the daemon is started.
 func ensureDocker(ctx context.Context, c internalssh.Client, timeout time.Duration) error {
-	cmdCtx, cancel := context.WithTimeout(ctx, timeout)
+	checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	out, err := c.Run(cmdCtx, "command -v docker")
+	// Fast path: Docker already installed.
+	out, err := c.Run(checkCtx, "command -v docker")
 	if err == nil && strings.TrimSpace(out) != "" {
-		// Docker is present; make sure the daemon is running.
 		return startDocker(ctx, c, timeout)
 	}
 
-	// Install Docker using the official convenience script (idempotent).
-	installScript := strings.Join([]string{
-		"export DEBIAN_FRONTEND=noninteractive",
-		"curl -fsSL https://get.docker.com -o /tmp/get-docker.sh",
-		"sh /tmp/get-docker.sh",
-		"rm -f /tmp/get-docker.sh",
-	}, " && ")
-
-	installCtx, cancel2 := context.WithTimeout(ctx, timeout)
-	defer cancel2()
-
-	if _, err := c.Run(installCtx, installScript); err != nil {
-		return fmt.Errorf("docker install: %w", err)
+	// Is a background install already running?
+	statusCtx, statusCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer statusCancel()
+	status, _ := c.Run(statusCtx, "test -f /tmp/docker-installing && echo installing || echo not-started")
+	if strings.TrimSpace(status) == "installing" {
+		return fmt.Errorf("Docker installation in progress, will retry on next reconcile")
 	}
 
-	return startDocker(ctx, c, timeout)
+	// Launch install in the background — this SSH call returns immediately.
+	// /tmp/docker-installing is created before the script starts and removed
+	// when it finishes, so subsequent reconciles can detect completion.
+	bgCtx, bgCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer bgCancel()
+	bgCmd := "touch /tmp/docker-installing && " +
+		"nohup bash -c '" +
+		"export DEBIAN_FRONTEND=noninteractive && " +
+		"curl -fsSL https://get.docker.com -o /tmp/get-docker.sh && " +
+		"sh /tmp/get-docker.sh && " +
+		"rm -f /tmp/get-docker.sh && " +
+		"systemctl enable --now docker && " +
+		"rm -f /tmp/docker-installing" +
+		"' >/tmp/docker-install.log 2>&1 &"
+	_, _ = c.Run(bgCtx, bgCmd)
+
+	return fmt.Errorf("Docker installation started in background, will retry on next reconcile")
 }
 
 // startDocker ensures the Docker daemon is running.
