@@ -602,10 +602,30 @@ Built and pushed via: `.github/workflows/function-appenv-deployer.yaml`
 7. **[Microservice only] Wait for Dbaas Ready** — checks the `dbaas` composed resource for `Ready=True` before deploying. This ensures MySQL is accessible when the container starts.
 8. **[Microservice only] Get DBaaS host** — reads `status.atProvider.address` from the `dbaas-eip` composed resource.
 9. **[Microservice only] Read DB password** — reads from pipeline context. Builds MySQL env vars map.
-10. **SSH connect** — dials `ubuntu@<publicIp>:22`. Timeout: 30s.
-11. **Ensure Docker** — runs `command -v docker`; if missing, installs via `get.docker.com`. Starts with `systemctl enable --now docker`.
-12. **Reconcile container** — inspects `image`, `running`, `networkMode`. Recreates if any differ from desired. Uses `--network host`.
-13. **Write status** — sets `status.endpoint`, `status.database*`, and connection secret via `writeConnectionSecretToRef`.
+10. **Short-circuit check** — if `status.endpoint` already matches the current IP:port and `status.deployedImage` matches `spec.image`, skip SSH entirely and return in milliseconds. SSH only runs on first deploy or after an image change.
+11. **SSH connect** — dials `ubuntu@<publicIp>:22`. Timeout: 30s.
+12. **Ensure Docker** — checks `command -v docker`. If missing, launches the install script **in the background** (`nohup`) and returns a retryable result immediately — no blocking wait. The flag file `/tmp/docker-installing` prevents duplicate installs across reconciles.
+13. **Reconcile container** — inspects `image`, `running`, `networkMode`. Recreates if any differ from desired. Uses `--network host`.
+14. **Write status** — sets `status.endpoint`, `status.deployedImage`, `status.database*`, and connection secret via `writeConnectionSecretToRef`.
+
+### Reconcile lifecycle on a fresh VM
+
+| Cycle | What happens | SSH? | Typical duration |
+|---|---|---|---|
+| 1 | Infrastructure not ready yet | No | instant |
+| 2–N | Waiting for Cloudserver / Dbaas | No | instant |
+| N+1 | Docker not found → background install triggered | Yes | ~5 s |
+| N+2 to N+M | `/tmp/docker-installing` present → waiting | Yes | ~3 s |
+| N+M+1 | Docker ready → pull image + `docker run` | Yes | ~10–30 s |
+| N+M+2+ | Short-circuit: endpoint + deployedImage match | No | ~0 s |
+
+To force a re-deploy after the container is stopped or the image changes:
+
+```bash
+# Trigger re-deploy by clearing the short-circuit marker
+kubectl patch <kind> <name> --type=json \
+  -p='[{"op":"remove","path":"/status/deployedImage"}]'
+```
 
 ### Container reconciliation matrix
 
