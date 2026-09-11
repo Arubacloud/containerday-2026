@@ -491,8 +491,8 @@ func sanitizeError(err error) string {
 		return ""
 	}
 	msg := err.Error()
-	if len(msg) > 200 {
-		return msg[:200] + "..."
+	if len(msg) > 500 {
+		return msg[:500] + "..."
 	}
 	return msg
 }
