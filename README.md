@@ -1,10 +1,30 @@
 # containerday-2026
 
-A Crossplane v2 project that exposes a **platform API** hiding all ArubaCloud infrastructure details. A developer creates one object and gets a running Docker container on a provisioned VM.
+A Crossplane v2 project that exposes **platform APIs** hiding all ArubaCloud infrastructure details. A developer creates one object and gets a running Docker container — with or without a managed MySQL database.
 
 ---
 
-## User-facing API
+## Contents
+
+| Section | Description |
+|---|---|
+| [Platform APIs](#platform-apis) | The two user-facing kinds and their fields |
+| [Architecture](#architecture) | How each API composes infrastructure |
+| [Prerequisites](#prerequisites) | Crossplane installation |
+| [Installation](#installation) | Option A (Configuration package) and Option B (manual) |
+| [ApplicationEnvironment usage](#applicationenvironment-usage) | Deploy a container on a VM |
+| [Microservice usage](#microservice-usage) | Deploy a container + managed MySQL |
+| [Composition Function](#composition-function-function-appenv-deployer) | How the deployer function works |
+| [Building and releasing](#building-and-releasing-the-function) | Tests, build, push |
+| [Repository structure](#repository-structure) | File layout |
+
+---
+
+## Platform APIs
+
+### ApplicationEnvironment
+
+A VM is provisioned and a Docker image is deployed onto it. No database.
 
 ```yaml
 apiVersion: platform.example.com/v1alpha1
@@ -17,34 +37,71 @@ spec:
   port: 80              # port the container listens on (default: 9898)
 ```
 
-After creation, check status:
-
-```bash
-kubectl get applicationenvironment my-app
-# NAME     SYNCED   READY   ...
-# my-app   True     True
-
-kubectl get applicationenvironment my-app -o jsonpath='{.status.endpoint}'
-# http://1.2.3.4:80
-```
-
-### Spec fields
-
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `spec.image` | string | yes | — | Docker image to deploy (e.g. `nginx:latest`, `ghcr.io/org/app:v1`) |
-| `spec.port` | integer | no | `9898` | TCP port the container listens on. Used to build `status.endpoint` and open the security group. |
+| `spec.image` | string | yes | — | Docker image to deploy |
+| `spec.port` | integer | no | `9898` | TCP port the container listens on |
 
-### Status fields
-
-| Field | Description |
+| Status field | Description |
 |---|---|
 | `status.endpoint` | `http://<publicIp>:<port>` — reachable once `Ready=True` |
 | `status.conditions` | Standard Crossplane conditions (`Synced`, `Ready`, `Responsive`) |
 
 ---
 
+### Microservice
+
+A VM **and** a managed MySQL DBaaS cluster are provisioned. The container is started with MySQL connection env vars pre-injected. Database credentials are written to a Kubernetes Secret.
+
+```yaml
+apiVersion: platform.example.com/v1alpha1
+kind: Microservice
+metadata:
+  name: my-svc
+  namespace: default
+spec:
+  image: adminer:4.8.1   # any MySQL-aware Docker image
+  port: 8080
+  database:
+    engine: mysql
+  writeConnectionSecretToRef:
+    name: my-svc-db-conn   # Secret to write credentials into
+    namespace: default
+```
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `spec.image` | string | yes | — | Docker image to deploy |
+| `spec.port` | integer | no | `8080` | TCP port the container listens on |
+| `spec.database.engine` | string | yes | — | Database engine. Only `mysql` supported |
+| `spec.writeConnectionSecretToRef.name` | string | no | — | Secret to write DB credentials into |
+| `spec.writeConnectionSecretToRef.namespace` | string | no | — | Namespace of that Secret |
+
+| Status field | Description |
+|---|---|
+| `status.endpoint` | `http://<vmIp>:<port>` — reachable once `Ready=True` |
+| `status.databaseHost` | Public IP of the DBaaS cluster |
+| `status.databasePort` | `3306` |
+| `status.databaseName` | `app` |
+| `status.databaseUser` | `appuser` |
+| `status.conditions` | Standard Crossplane conditions |
+
+Connection secret keys (written to `writeConnectionSecretToRef`):
+
+| Key | Content |
+|---|---|
+| `host` | MySQL public IP |
+| `port` | `3306` |
+| `database` | `app` |
+| `username` | `appuser` |
+| `password` | plain-text password |
+| `endpoint` | `mysql://<host>:3306/app` (full DSN) |
+
+---
+
 ## Architecture
+
+### ApplicationEnvironment
 
 ```
 ApplicationEnvironment (spec.image, spec.port)
@@ -54,32 +111,67 @@ Crossplane Composition (Pipeline mode)
         │
         ├── Step 1: provision-infrastructure (function-patch-and-transform)
         │     ├── ArubaCloud Project
-        │     ├── VPC
-        │     ├── Subnet
-        │     ├── Security Group
-        │     ├── Security Rules: SSH(22), HTTP(80), HTTPS(443), app(spec.port), ICMP, egress
+        │     ├── VPC + Subnet
+        │     ├── Security Group + Rules: SSH(22), HTTP(80), app(spec.port), ICMP, egress
         │     ├── Elastic IP
         │     ├── Boot Volume (Ubuntu 22.04, 100 GB)
         │     ├── Keypair
         │     └── Cloudserver (flavor CSO4A8, zone ITBG-1)
         │
         ├── Step 2: fetch-ssh-secret (function-extra-resources)
-        │     └── reads Secret/app-ssh-privkey from namespace default
+        │     └── reads Secret/app-ssh-privkey
         │
         ├── Step 3: deploy-application (function-appenv-deployer)
         │     ├── waits for Cloudserver Ready + publicIp
-        │     ├── reads SSH private key from pipeline context
         │     ├── SSH ubuntu@<publicIp>:22
         │     ├── checks/installs Docker (idempotent)
-        │     ├── reconciles container named "application"
-        │     │     (--network host, --restart unless-stopped)
-        │     └── writes status.endpoint = http://<publicIp>:<port>
+        │     ├── reconciles container (--network host, --restart unless-stopped)
+        │     └── writes status.endpoint
         │
-        └── Step 4: auto-ready (function-auto-ready)
-              └── marks XR Ready=True only when all composed resources are ready
+        └── Step 4: auto-ready
 ```
 
-All resource names are derived from the `ApplicationEnvironment` name — multiple environments never collide.
+### Microservice
+
+```
+Microservice (spec.image, spec.port, spec.database.engine)
+        │
+        ▼
+Crossplane Composition (Pipeline mode)
+        │
+        ├── Step 1: provision-infrastructure (function-patch-and-transform)
+        │     ├── ArubaCloud Project
+        │     ├── VPC + Subnet
+        │     ├── Security Group + Rules (VM): SSH(22), HTTP(80), app(spec.port), ICMP, egress
+        │     ├── Elastic IP (VM)
+        │     ├── Boot Volume + Keypair + Cloudserver
+        │     ├── Security Group + Rules (DBaaS): MySQL(3306), egress
+        │     ├── Elastic IP (DBaaS)
+        │     ├── Dbaas (MySQL 8.0, flavor DBO2A4, zone ITBG-1)
+        │     ├── Database (name: app)
+        │     ├── Dbaasuser (username: appuser)
+        │     └── Databasegrant (role: liteadmin)
+        │
+        ├── Step 2: fetch-secrets (function-extra-resources)
+        │     ├── reads Secret/app-ssh-privkey
+        │     └── reads Secret/app-db-password
+        │
+        ├── Step 3: deploy-application (function-appenv-deployer)
+        │     ├── waits for Cloudserver Ready + publicIp
+        │     ├── waits for Dbaas cluster Ready
+        │     ├── waits for DBaaS Elastic IP address
+        │     ├── SSH ubuntu@<publicIp>:22
+        │     ├── checks/installs Docker (idempotent)
+        │     ├── reconciles container with env vars:
+        │     │     MYSQL_HOST, MYSQL_PORT, MYSQL_DATABASE, MYSQL_USER,
+        │     │     MYSQL_PASSWORD, DB_*, ADMINER_DEFAULT_SERVER
+        │     ├── writes status.endpoint + status.database*
+        │     └── writes connection details to writeConnectionSecretToRef
+        │
+        └── Step 4: auto-ready
+```
+
+All resource names are derived from the XR name — multiple environments never collide.
 
 ---
 
@@ -112,7 +204,7 @@ Everything else (provider, functions, XRD, Composition) is installed as part of 
 
 **Step 1 — Install the Configuration**
 
-A Crossplane `Configuration` is a bundle — applying it tells Crossplane to download and install the ArubaCloud provider, all composition functions, the XRD, and the Composition. The provider installation is what registers the `arubacloud.crossplane.io` CRDs; nothing else in these steps will work until the provider is healthy.
+A Crossplane `Configuration` is a bundle — applying it tells Crossplane to download and install the ArubaCloud provider, all composition functions, the XRDs, and the Compositions. The provider installation is what registers the `arubacloud.crossplane.io` CRDs; nothing else in these steps will work until the provider is healthy.
 
 ```bash
 kubectl apply -f - <<'EOF'
@@ -128,7 +220,7 @@ EOF
 **Step 2 — Wait for the provider to become Healthy**
 
 > **Do not proceed to Step 3 until this command exits successfully.**
-> The provider registers the `arubacloud.crossplane.io/v1beta1` CRDs (including `ClusterProviderConfig`). Applying Step 3 before this completes will fail with `no matches for kind "ClusterProviderConfig"`.
+> The provider registers the `arubacloud.crossplane.io/v1beta1` CRDs (including `ProviderConfig`). Applying Step 3 before this completes will fail with `no matches for kind "ProviderConfig"`.
 
 ```bash
 kubectl wait provider/arubacloud-provider-arubacloud \
@@ -137,7 +229,7 @@ kubectl wait provider/arubacloud-provider-arubacloud \
 
 **Step 3 — Create ArubaCloud credentials and ProviderConfig**
 
-The `ProviderConfig` CRD now exists. The ArubaCloud provider looks for its credentials secret in the **same namespace as the `ProviderConfig` object** (`default`), regardless of `secretRef.namespace`. Create both in `default`:
+The ArubaCloud provider looks for its credentials secret in the **same namespace as the `ProviderConfig` object** (`default`). Create both in `default`:
 
 ```bash
 kubectl create secret generic arubacloud-credentials \
@@ -189,7 +281,7 @@ kubectl create secret generic app-ssh-privkey \
   --from-file=privateKey=/tmp/appenv-key
 ```
 
-DB password (required by `Microservice` only):
+DB password (required by `Microservice` only). Must meet ArubaCloud's password policy (minimum 12 characters, mixed case, numbers and symbols):
 
 ```bash
 kubectl create secret generic app-db-password \
@@ -267,7 +359,7 @@ Use this if you need to pin versions independently or the cluster already has so
 
 **Step 1 — Install the provider and wait for its CRDs:**
 
-> **The `kubectl wait` at the end of this block is mandatory before Step 2.** The provider registers the `arubacloud.crossplane.io/v1beta1` CRDs (including `ClusterProviderConfig`). Do not run Step 2 until the wait exits successfully.
+> **The `kubectl wait` at the end of this block is mandatory before Step 2.** The provider registers the `arubacloud.crossplane.io/v1beta1` CRDs. Do not run Step 2 until the wait exits successfully.
 
 ```bash
 kubectl apply -f - <<'EOF'
@@ -353,18 +445,20 @@ kubectl wait \
   --for=condition=Healthy --timeout=120s
 ```
 
-**Step 4 — Apply XRD and Composition:**
+**Step 4 — Apply XRDs and Compositions:**
 
 ```bash
 kubectl apply -f apis/applicationenvironments/definition.yaml
 kubectl apply -f apis/applicationenvironments/composition.yaml
+kubectl apply -f apis/microservices/definition.yaml
+kubectl apply -f apis/microservices/composition.yaml
 ```
 
-**Steps 5–6 — SSH key secrets and RBAC:** same as Option A Steps 5–6 above.
+**Steps 5–6 — Platform secrets and RBAC:** same as Option A Steps 5–6 above.
 
 ---
 
-## Usage
+## ApplicationEnvironment usage
 
 ### Deploy an application
 
@@ -372,7 +466,7 @@ kubectl apply -f apis/applicationenvironments/composition.yaml
 kubectl apply -f examples/applicationenvironment/app.yaml
 ```
 
-Watch progress (infrastructure takes a few minutes to provision):
+Watch progress (infrastructure takes ~5 minutes to provision):
 
 ```bash
 kubectl get applicationenvironment test -w
@@ -401,7 +495,7 @@ kubectl patch applicationenvironment test \
   --type=merge -p '{"spec":{"image":"nginx:latest","port":80}}'
 ```
 
-Within ~60 seconds the function detects the image mismatch, removes the old container, and runs the new one. The endpoint updates to `http://<ip>:80`.
+Within ~60 seconds the function detects the image mismatch, removes the old container, and runs the new one.
 
 ### Self-healing
 
@@ -428,7 +522,7 @@ Events during reconciliation:
 ```
 Waiting for Cloudserver "cloudserver" to be provisioned
 Waiting for Cloudserver to become ready
-Waiting for DBaaS Elastic IP "dbaas-eip" to be provisioned
+Waiting for Dbaas cluster "dbaas" to become ready
 Waiting for DBaaS Elastic IP address to be assigned
 Application "adminer:4.8.1" deployed successfully as container "application"
 ```
@@ -446,7 +540,7 @@ kubectl get microservice my-svc -o jsonpath='{.status}' | jq .
 # }
 ```
 
-Read the password from the connection secret:
+Read credentials from the connection secret:
 
 ```bash
 kubectl get secret my-svc-db-conn -n default \
@@ -457,14 +551,14 @@ kubectl get secret my-svc-db-conn -n default \
   -o jsonpath='{.data.endpoint}' | base64 -d
 ```
 
-Open adminer in the browser at `http://<status.endpoint>`. The MySQL server field is pre-filled via `ADMINER_DEFAULT_SERVER`. Log in with:
+Open adminer in your browser at `http://<status.endpoint>`. The MySQL server field is pre-filled. Log in with:
 
-| Field    | Value                               |
-|----------|-------------------------------------|
+| Field    | Value                                |
+|----------|--------------------------------------|
 | Server   | `<status.databaseHost>` (pre-filled) |
-| Username | `appuser`                           |
-| Password | from `my-svc-db-conn` secret        |
-| Database | `app`                               |
+| Username | `appuser`                            |
+| Password | from `my-svc-db-conn` secret         |
+| Database | `app`                                |
 
 ### Change the image
 
@@ -473,45 +567,51 @@ kubectl patch microservice my-svc \
   --type=merge -p '{"spec":{"image":"phpmyadmin:5.2","port":80}}'
 ```
 
-The function detects the image mismatch on the next reconcile, removes the old container, and starts the new one with the same MySQL env vars.
+The function detects the image mismatch on the next reconcile, removes the old container, and starts the new one with the same MySQL env vars injected.
 
-### Connection secret keys
+### Injected environment variables
 
-| Key        | Content                              |
-|------------|--------------------------------------|
-| `host`     | MySQL public IP                      |
-| `port`     | `3306`                               |
-| `database` | `app`                                |
-| `username` | `appuser`                            |
-| `password` | plain-text password                  |
-| `endpoint` | `mysql://<host>:3306/app` (full DSN) |
+The following env vars are automatically set on the container — any MySQL-aware image can use them without additional configuration:
+
+| Variable | Value |
+|---|---|
+| `MYSQL_HOST` | DBaaS public IP |
+| `MYSQL_PORT` | `3306` |
+| `MYSQL_DATABASE` | `app` |
+| `MYSQL_USER` | `appuser` |
+| `MYSQL_PASSWORD` | from `app-db-password` secret |
+| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | same values (common aliases) |
+| `ADMINER_DEFAULT_SERVER` | same as `MYSQL_HOST` |
 
 ---
 
 ## Composition Function: function-appenv-deployer
 
-Source: `functions/appenv-deployer/`  
-Package: `ghcr.io/arubacloud/function-appenv-deployer`  
+Source: `functions/appenv-deployer/`
+Package: `ghcr.io/arubacloud/function-appenv-deployer`
 Built and pushed via: `.github/workflows/function-appenv-deployer.yaml`
 
 ### Reconciliation steps
 
-1. **Parse input** — reads `cloudserverResourceName`, `sshUser`, `sshPort`, `containerName` from the Composition's static input.
+1. **Parse input** — reads `cloudserverResourceName`, `sshUser`, `sshPort`, `containerName`, optional `database` config.
 2. **Read XR spec** — reads `spec.image` and `spec.port` from the observed XR.
 3. **Observe Cloudserver** — looks up the `cloudserver` composed resource. Returns non-fatal if not yet observed.
-4. **Check readiness** — verifies `status.conditions[type=Ready].status == True`.
+4. **Check Cloudserver readiness** — verifies `status.conditions[type=Ready].status == True`.
 5. **Get publicIp** — reads `status.atProvider.publicIp`. Returns non-fatal if absent.
-6. **Read SSH key** — reads from pipeline context key `apiextensions.crossplane.io/extra-resources` populated by `function-extra-resources`. Base64-decodes the Secret value. Returns non-fatal if context not yet populated (first reconcile).
-7. **SSH connect** — dials `ubuntu@<publicIp>:22` using the private key. Timeout: 30s.
-8. **Ensure Docker** — runs `command -v docker`; if missing, installs via `get.docker.com`. Starts with `systemctl enable --now docker`.
-9. **Reconcile container** — inspects `image`, `running`, `networkMode`. Recreates if any differ from desired. Uses `--network host` so all container ports are accessible directly on the VM's public IP.
-10. **Write endpoint** — sets `status.endpoint = http://<publicIp>:<port>` on the desired XR.
+6. **Read SSH key** — reads from pipeline context populated by `function-extra-resources`. Returns non-fatal if not yet populated.
+7. **[Microservice only] Wait for Dbaas Ready** — checks the `dbaas` composed resource for `Ready=True` before deploying. This ensures MySQL is accessible when the container starts.
+8. **[Microservice only] Get DBaaS host** — reads `status.atProvider.address` from the `dbaas-eip` composed resource.
+9. **[Microservice only] Read DB password** — reads from pipeline context. Builds MySQL env vars map.
+10. **SSH connect** — dials `ubuntu@<publicIp>:22`. Timeout: 30s.
+11. **Ensure Docker** — runs `command -v docker`; if missing, installs via `get.docker.com`. Starts with `systemctl enable --now docker`.
+12. **Reconcile container** — inspects `image`, `running`, `networkMode`. Recreates if any differ from desired. Uses `--network host`.
+13. **Write status** — sets `status.endpoint`, `status.database*`, and connection secret via `writeConnectionSecretToRef`.
 
 ### Container reconciliation matrix
 
 | State | Action |
 |---|---|
-| Does not exist | `docker run -d --name application --restart unless-stopped --network host <image>` |
+| Does not exist | `docker run -d --name application --restart unless-stopped --network host [-e ...] <image>` |
 | Exists, correct image, running, host network | no-op |
 | Exists, wrong image | `docker rm -f` → `docker run` |
 | Exists, not host network | `docker rm -f` → `docker run` |
@@ -519,9 +619,10 @@ Built and pushed via: `.github/workflows/function-appenv-deployer.yaml`
 
 ### Security
 
-- SSH private key is read from pipeline context and never logged, never written to XR status, never included in error messages.
-- Host key verification uses TOFU (accept-first-use). Security groups restrict VM access to SSH and declared application ports.
-- RBAC grants `function-extra-resources` `get`+`list` on `app-ssh-privkey` only.
+- SSH private key and DB password are read from pipeline context and never logged, never written to XR status, never included in error messages.
+- DB password is written only to `writeConnectionSecretToRef` — not to XR status.
+- Host key verification uses TOFU (accept-first-use).
+- RBAC grants `function-extra-resources` `get`+`list` on `app-ssh-privkey` and `app-db-password` only.
 
 ---
 
@@ -561,12 +662,18 @@ CI workflow: `.github/workflows/function-appenv-deployer.yaml`
 ```
 apis/
   applicationenvironments/
-    definition.yaml       ← XRD: ApplicationEnvironment CRD
-    composition.yaml      ← Composition: 14 composed resources + 4 pipeline steps
+    definition.yaml       ← XRD: ApplicationEnvironment
+    composition.yaml      ← 14 composed resources + 4 pipeline steps
+
+  microservices/
+    definition.yaml       ← XRD: Microservice
+    composition.yaml      ← 22 composed resources + 4 pipeline steps
 
 examples/
   applicationenvironment/
-    app.yaml              ← Example XR
+    app.yaml              ← ApplicationEnvironment example
+  microservice/
+    app.yaml              ← Microservice example (adminer:4.8.1 + MySQL)
 
 functions/
   appenv-deployer/
