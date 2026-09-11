@@ -1097,7 +1097,7 @@ spec:
           kind: Databasegrant
           spec:
             forProvider:
-              role: ALL
+              role: liteadmin
             providerConfigRef:
               kind: ProviderConfig
               name: default
