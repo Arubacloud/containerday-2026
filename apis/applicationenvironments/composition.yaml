@@ -29,8 +29,7 @@ spec:
             forProvider:
               description: "ApplicationEnvironment managed project"
               tags:
-                - xplnln
-                - aenv
+                - containerdays
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -61,7 +60,7 @@ spec:
             forProvider:
               location: ITBG-Bergamo
               tags:
-                - xpln
+                - containerdays
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -101,7 +100,7 @@ spec:
               location: ITBG-Bergamo
               type: Basic
               tags:
-                - xpln
+                - containerdays
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -148,7 +147,7 @@ spec:
             forProvider:
               location: ITBG-Bergamo
               tags:
-                - xpln
+                - containerdays
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -554,7 +553,7 @@ spec:
               location: ITBG-Bergamo
               billingPeriod: Hour
               tags:
-                - xpln
+                - containerdays
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -607,7 +606,7 @@ spec:
               bootable: true
               image: LU22-001
               tags:
-                - xpln
+                - containerdays
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -648,7 +647,7 @@ spec:
             forProvider:
               location: ITBG-Bergamo
               tags:
-                - xpln
+                - containerdays
               valueSecretRef:
                 name: app-ssh-pubkey
                 key: value
@@ -691,8 +690,7 @@ spec:
               location: ITBG-Bergamo
               zone: ITBG-1
               tags:
-                - xplnln
-                - aenv
+                - containerdays
               network:
                 subnetUriRefsRefs:
                   - name: placeholder   # patched below
