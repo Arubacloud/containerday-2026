@@ -1,0 +1,40 @@
+# tokensave index (local tooling, not part of the project)
+.tokensave/
+
+# Claude Code local memory (not part of the project)
+.claude/
+
+# Go build output
+functions/appenv-deployer/function
+*.exe
+
+# Go test cache and coverage
+*.test
+*.out
+coverage.html
+
+# Go workspace files (if used locally)
+go.work
+go.work.sum
+
+# Crossplane package build artifacts
+*.xpkg
+_output/
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SSH keys — never commit these
+*.pem
+*.key
+id_rsa
+id_ed25519
+id_ecdsa
