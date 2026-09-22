@@ -9,7 +9,7 @@ spec:
       apiVersion: pkg.crossplane.io/v1
       kind: Provider
       package: xpkg.upbound.io/arubacloud/provider-arubacloud
-      version: 'v0.0.10'
+      version: 'v0.1.0'
   - type: xpkg
     xpkg:
       apiVersion: pkg.crossplane.io/v1
