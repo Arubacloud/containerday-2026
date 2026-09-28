@@ -57,7 +57,7 @@ A VM **and** a managed MySQL DBaaS cluster are provisioned. The container is sta
 apiVersion: platform.example.com/v1alpha1
 kind: Microservice
 metadata:
-  name: my-svc
+  name: containerday-microsvc
   namespace: default
 spec:
   image: adminer:4.8.1   # any MySQL-aware Docker image
@@ -65,7 +65,7 @@ spec:
   database:
     engine: mysql
   writeConnectionSecretToRef:
-    name: my-svc-db-conn   # Secret to write credentials into
+    name: containerday-microsvc-db-conn   # Secret to write credentials into
     namespace: default
 ```
 
@@ -469,7 +469,7 @@ kubectl apply -f examples/applicationenvironment/app.yaml
 Watch progress (infrastructure takes ~5 minutes to provision):
 
 ```bash
-kubectl get applicationenvironment test -w
+kubectl get applicationenvironment containerday-appenv -w
 ```
 
 Events during reconciliation:
@@ -485,13 +485,13 @@ Application "..." deployed successfully as container "application"
 Once `READY=True`:
 
 ```bash
-curl $(kubectl get applicationenvironment test -o jsonpath='{.status.endpoint}')
+curl $(kubectl get applicationenvironment containerday-appenv -o jsonpath='{.status.endpoint}')
 ```
 
 ### Change the image
 
 ```bash
-kubectl patch applicationenvironment test \
+kubectl patch applicationenvironment containerday-appenv \
   --type=merge -p '{"spec":{"image":"nginx:latest","port":80}}'
 ```
 
@@ -514,7 +514,7 @@ kubectl apply -f examples/microservice/app.yaml
 Watch progress (VM + DBaaS cluster both need to provision — allow 10–15 minutes):
 
 ```bash
-kubectl get microservice my-svc -w
+kubectl get microservice containerday-microsvc -w
 ```
 
 Events during reconciliation:
@@ -530,7 +530,7 @@ Application "adminer:4.8.1" deployed successfully as container "application"
 Once `READY=True`, check connection details:
 
 ```bash
-kubectl get microservice my-svc -o jsonpath='{.status}' | jq .
+kubectl get microservice containerday-microsvc -o jsonpath='{.status}' | jq .
 # {
 #   "endpoint":     "http://<vm-ip>:8080",
 #   "databaseHost": "<dbaas-ip>",
@@ -543,11 +543,11 @@ kubectl get microservice my-svc -o jsonpath='{.status}' | jq .
 Read credentials from the connection secret:
 
 ```bash
-kubectl get secret my-svc-db-conn -n default \
+kubectl get secret containerday-microsvc-db-conn -n default \
   -o jsonpath='{.data.password}' | base64 -d
 
 # Full MySQL DSN:
-kubectl get secret my-svc-db-conn -n default \
+kubectl get secret containerday-microsvc-db-conn -n default \
   -o jsonpath='{.data.endpoint}' | base64 -d
 ```
 
@@ -557,13 +557,13 @@ Open adminer in your browser at `http://<status.endpoint>`. The MySQL server fie
 |----------|--------------------------------------|
 | Server   | `<status.databaseHost>` (pre-filled) |
 | Username | `appuser`                            |
-| Password | from `my-svc-db-conn` secret         |
+| Password | from `containerday-microsvc-db-conn` secret         |
 | Database | `app`                                |
 
 ### Change the image
 
 ```bash
-kubectl patch microservice my-svc \
+kubectl patch microservice containerday-microsvc \
   --type=merge -p '{"spec":{"image":"phpmyadmin:5.2","port":80}}'
 ```
 

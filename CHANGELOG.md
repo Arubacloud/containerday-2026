@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.1] - 2026-09-28
+
+### Changed
+
+#### Compositions
+
+- **`ApplicationEnvironment` Composition** — standardized ArubaCloud resource tags to `containerday` + `appenv` on all managed resources (VPC, Subnet, SecurityGroup, VM, disk, SSH key). Previously a single generic `containerdays` tag was used, making it impossible to distinguish resource types at the cloud level.
+- **`Microservice` Composition** — replaced inconsistent placeholder tags (`xplnln`, `xpln`, `msvc`, `msvc-db`) with uniform `containerday` + `microservice` tags across all managed resources, including the DBaaS cluster and its associated VM.
+
+#### Examples
+
+- **`ApplicationEnvironment` example** — renamed resource from `test` to `containerday-appenv` to better reflect the API and avoid collision with other test resources.
+- **`Microservice` example** — renamed resource from `my-svc` to `containerday-microsvc` and updated the connection secret reference (`writeConnectionSecretToRef.name`) accordingly.
+
+---
+
 ## [0.1.0] - 2026-09-22
 
 ### Added
@@ -52,4 +68,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.1.1]: https://github.com/Arubacloud/containerday-2026/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Arubacloud/containerday-2026/releases/tag/v0.1.0
