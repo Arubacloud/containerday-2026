@@ -29,7 +29,8 @@ spec:
             forProvider:
               description: "ApplicationEnvironment managed project"
               tags:
-                - containerdays
+                - containerday
+                - appenv
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -60,7 +61,8 @@ spec:
             forProvider:
               location: ITBG-Bergamo
               tags:
-                - containerdays
+                - containerday
+                - appenv
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -100,7 +102,8 @@ spec:
               location: ITBG-Bergamo
               type: Basic
               tags:
-                - containerdays
+                - containerday
+                - appenv
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -147,7 +150,8 @@ spec:
             forProvider:
               location: ITBG-Bergamo
               tags:
-                - containerdays
+                - containerday
+                - appenv  
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -553,7 +557,8 @@ spec:
               location: ITBG-Bergamo
               billingPeriod: Hour
               tags:
-                - containerdays
+                - containerday
+                - appenv
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -606,7 +611,8 @@ spec:
               bootable: true
               image: LU22-001
               tags:
-                - containerdays
+                - containerday
+                - appenv
             providerConfigRef:
               kind: ProviderConfig
               name: default
@@ -647,7 +653,8 @@ spec:
             forProvider:
               location: ITBG-Bergamo
               tags:
-                - containerdays
+                - containerday
+                - appenv
               valueSecretRef:
                 name: app-ssh-pubkey
                 key: value
@@ -690,7 +697,8 @@ spec:
               location: ITBG-Bergamo
               zone: ITBG-1
               tags:
-                - containerdays
+                - containerday
+                - appenv
               network:
                 subnetUriRefsRefs:
                   - name: placeholder   # patched below

@@ -1,7 +1,7 @@
 apiVersion: platform.example.com/v1alpha1
 kind: Microservice
 metadata:
-  name: my-svc
+  name: containerday-microsvc
   namespace: default
 spec:
   # adminer is a lightweight MySQL web admin UI.
@@ -12,5 +12,5 @@ spec:
   database:
     engine: mysql
   writeConnectionSecretToRef:
-    name: my-svc-db-conn
+    name: containerday-microsvc-db-conn
     namespace: default
