@@ -105,7 +105,7 @@ spec:
               tags:
                 - containerday
                 - microservice
-              providerConfigRef:
+            providerConfigRef:
               kind: ProviderConfig
               name: default
         patches:
