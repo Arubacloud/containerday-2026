@@ -1182,6 +1182,12 @@ spec:
   - step: deploy-application
     functionRef:
       name: arubacloud-containerday-2026appenv-deployer
+    credentials:
+    - name: ssh-key
+      source: Secret
+      secretRef:
+        namespace: default
+        name: app-ssh-privkey
     input:
       apiVersion: appenv.platform.example.com/v1alpha1
       kind: DeployerInput

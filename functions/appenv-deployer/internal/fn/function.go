@@ -393,12 +393,29 @@ func getSecretDataValue(req *fnv1.RunFunctionRequest, contextKey, dataKey string
 	return encoded, nil
 }
 
-// getSSHKeyFromContext reads the SSH private key from the pipeline context.
+// getSSHKeyFromContext reads the SSH private key. It first checks the
+// Crossplane credentials mechanism (preferred — set via the composition's
+// credentials field), then falls back to the function-extra-resources pipeline
+// context for backwards compatibility.
 func getSSHKeyFromContext(req *fnv1.RunFunctionRequest, ref v1alpha1.SSHSecretRef) ([]byte, error) {
 	key := ref.Key
 	if key == "" {
 		key = "privateKey"
 	}
+
+	// Try the credentials mechanism first. Crossplane reads the Secret directly
+	// and passes its Data as raw bytes — no base64 decode needed.
+	if creds := req.GetCredentials(); creds != nil {
+		if c, ok := creds["ssh-key"]; ok {
+			if data := c.GetCredentialData().GetData(); data != nil {
+				if v, ok := data[key]; ok && len(v) > 0 {
+					return v, nil
+				}
+			}
+		}
+	}
+
+	// Fall back to pipeline context populated by function-extra-resources.
 	encoded, err := getSecretDataValue(req, "ssh-secret", key)
 	if err != nil {
 		return nil, err
