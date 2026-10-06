@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.2] - 2026-10-06
+
+### Fixed
+
+#### Composition Function
+
+- **`function-appenv-deployer`** — fixed an infinite reconcile loop in `ensureDocker` where a failed background Docker installation left the `/tmp/docker-installing` flag file on the VM permanently. If the flag is present for longer than 15 minutes (longer than any install should take), the function now removes the stale flag and re-triggers the install, recovering automatically from network errors or mid-script failures.
+
+---
+
 ## [0.1.1] - 2026-09-28
 
 ### Changed
@@ -68,5 +78,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.1.2]: https://github.com/Arubacloud/containerday-2026/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Arubacloud/containerday-2026/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Arubacloud/containerday-2026/releases/tag/v0.1.0

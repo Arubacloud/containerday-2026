@@ -164,6 +164,47 @@ func TestDeploy_DockerInstallInProgress(t *testing.T) {
 	}
 }
 
+// Test 5c: Docker install flag is stale (> 15 min) — re-trigger the install.
+func TestDeploy_DockerInstallStuck(t *testing.T) {
+	bgInstallCalled := false
+	client := &mockClient{
+		responses: map[string]cmdResult{
+			"command -v docker":              {out: "", err: errors.New("not found")},
+			"test -f /tmp/docker-installing": {out: "installing"},
+			// Simulate flag file that is 2000 seconds old (well over 15 min).
+			"stat -c %Y": {out: "2000"},
+			// rm of stale flag and re-trigger install succeed silently.
+			"rm -f /tmp/docker-installing": {out: ""},
+		},
+	}
+
+	trackClient := &trackingClient{
+		inner: client,
+		onRun: func(cmd string) {
+			if strings.Contains(cmd, "get-docker.sh") {
+				bgInstallCalled = true
+			}
+		},
+	}
+
+	d := newDeployer(trackClient, nil)
+	err := d.Deploy(context.Background(), DeployOptions{
+		Image:         "nginx:latest",
+		ContainerName: "application",
+	})
+
+	// Should return a retryable "background" error after re-triggering install.
+	if err == nil {
+		t.Fatal("expected retryable error after re-triggering stuck install, got nil")
+	}
+	if !strings.Contains(err.Error(), "background") {
+		t.Errorf("expected background install message, got: %v", err)
+	}
+	if !bgInstallCalled {
+		t.Error("expected background Docker install to be re-triggered after stale flag detected")
+	}
+}
+
 // Test 6: Container does not exist — create it
 func TestReconcileContainer_Create(t *testing.T) {
 	client := &mockClient{

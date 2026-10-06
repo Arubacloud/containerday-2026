@@ -1,7 +1,7 @@
 apiVersion: platform.example.com/v1alpha1
 kind: Microservice
 metadata:
-  name: containerday-microsvc
+  name: cday-microsvc
   namespace: default
 spec:
   # adminer is a lightweight MySQL web admin UI.

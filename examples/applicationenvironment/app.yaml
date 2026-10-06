@@ -1,7 +1,7 @@
 apiVersion: platform.example.com/v1alpha1
 kind: ApplicationEnvironment
 metadata:
-  name: containerday-appenv
+  name: cday-appenv
   namespace: default
 spec:
   # Docker image to run on the provisioned VM.

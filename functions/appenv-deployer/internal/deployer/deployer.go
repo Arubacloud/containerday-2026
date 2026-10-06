@@ -66,6 +66,10 @@ func (d *SSHDeployer) Deploy(ctx context.Context, opts DeployOptions) error {
 	return nil
 }
 
+// dockerInstallMaxDuration is the maximum time to wait for a background Docker
+// install before assuming the script failed and re-triggering it.
+const dockerInstallMaxDuration = 15 * time.Minute
+
 // ensureDocker checks whether Docker is installed and installs it if not.
 //
 // Installation is non-blocking: the install script is launched with nohup in
@@ -88,7 +92,22 @@ func ensureDocker(ctx context.Context, c internalssh.Client, timeout time.Durati
 	defer statusCancel()
 	status, _ := c.Run(statusCtx, "test -f /tmp/docker-installing && echo installing || echo not-started")
 	if strings.TrimSpace(status) == "installing" {
-		return fmt.Errorf("Docker installation in progress, will retry on next reconcile")
+		// Guard against a stuck install: if the flag file is older than
+		// dockerInstallMaxDuration the background script likely failed (e.g. curl
+		// network error) without reaching its cleanup line. Remove the stale flag
+		// and fall through to re-trigger the install.
+		ageCtx, ageCancel := context.WithTimeout(ctx, 10*time.Second)
+		defer ageCancel()
+		ageOut, _ := c.Run(ageCtx, "echo $(($(date +%s) - $(stat -c %Y /tmp/docker-installing 2>/dev/null || echo $(date +%s))))")
+		var ageSeconds int
+		fmt.Sscanf(strings.TrimSpace(ageOut), "%d", &ageSeconds)
+		if time.Duration(ageSeconds)*time.Second < dockerInstallMaxDuration {
+			return fmt.Errorf("Docker installation in progress, will retry on next reconcile")
+		}
+		// Flag has been present longer than any install should take — assume failure.
+		rmCtx, rmCancel := context.WithTimeout(ctx, 10*time.Second)
+		defer rmCancel()
+		_, _ = c.Run(rmCtx, "rm -f /tmp/docker-installing")
 	}
 
 	// Launch install in the background — this SSH call returns immediately.
